@@ -1,0 +1,6 @@
+{
+  "name": "BarberFlow",
+  "description": "Sistema completo de agendamento para barbearias com notificações push nativas via Service Worker em segundo plano, confirmação por e-mail, envio de mensagens e WhatsApp, gestão de barbeiros em tempo real e painel administrativo com controle de baixas e histórico de cortes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
