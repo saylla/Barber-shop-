@@ -4,27 +4,36 @@ import {
   INITIAL_BLOCKED_TIMES,
   INITIAL_BUSINESS_HOURS,
   INITIAL_CUSTOMERS,
+  INITIAL_PACKAGES,
+  INITIAL_PRODUCTS,
   INITIAL_PROFESSIONALS,
   INITIAL_REVIEWS,
   INITIAL_SERVICES,
   INITIAL_SETTINGS,
+  INITIAL_SYSTEM_USERS,
   getInitialAppointments
 } from '../data/initialData';
 import {
   Appointment,
   AppointmentHistoryEntry,
   AppointmentStatus,
+  BarberProduct,
+  BarberRegistrationData,
   BlockedTime,
   BusinessHours,
   Customer,
+  GoogleCalendarEvent,
+  GoogleCalendarSyncState,
   MessageTemplateType,
+  MonthlyPackage,
   Professional,
   ProfessionalLiveState,
   Review,
   SentMessageLog,
   Service,
   ShopSettings,
-  UserAccount
+  UserAccount,
+  UserRole
 } from '../types';
 import {
   calculateProfessionalLiveState,
@@ -34,6 +43,15 @@ import {
 } from '../utils/calendarUtils';
 import { dispatchAppointmentEmail } from '../utils/emailService';
 import { pushNotificationService, PushPermissionStatus } from '../utils/pushNotificationService';
+import {
+  initGoogleCalendarAuth,
+  signInWithGoogleCalendar,
+  logoutGoogleCalendar,
+  getCalendarAccessToken,
+  createGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+  listGoogleCalendarEvents,
+} from '../services/googleCalendarService';
 
 interface ToastInfo {
   id: string;
@@ -52,7 +70,7 @@ interface AppContextType {
   reviews: Review[];
   currentUser: UserAccount | null;
   isAdminAuthenticated: boolean;
-  activeView: 'client' | 'admin' | 'my_bookings';
+  activeView: 'client' | 'admin' | 'barber' | 'my_bookings';
   selectedServiceForBooking: Service | null;
   isBookingModalOpen: boolean;
   isSocialLoginModalOpen: boolean;
@@ -63,6 +81,12 @@ interface AppContextType {
   isPushSupported: boolean;
   requestPushPermission: () => Promise<PushPermissionStatus>;
   sendTestPushNotification: () => Promise<boolean>;
+  sendClientHaircutReminder: (
+    appointmentId: string,
+    reminderType?: '1_hour_before' | 'today' | 'tomorrow' | 'maintenance_15d' | 'maintenance_30d',
+    customMessage?: string
+  ) => Promise<boolean>;
+  notifyClientBookingConfirmed: (appointmentId: string) => Promise<boolean>;
 
   // 30s Real-time Overview & Live Statuses
   professionalLiveStates: Record<string, ProfessionalLiveState>;
@@ -82,6 +106,28 @@ interface AppContextType {
   selectedApptForReschedule: Appointment | null;
   isDeclineModalOpen: boolean;
   selectedApptForDecline: Appointment | null;
+
+  // New Modals (QR Code, Change Password, Complete Profile)
+  isQrCodeModalOpen: boolean;
+  openQrCodeModal: () => void;
+  closeQrCodeModal: () => void;
+  isChangePasswordModalOpen: boolean;
+  openChangePasswordModal: () => void;
+  closeChangePasswordModal: () => void;
+  isCompleteProfileModalOpen: boolean;
+  openCompleteProfileModal: () => void;
+  closeCompleteProfileModal: () => void;
+  completeUserProfile: (name: string, email: string, phone: string) => void;
+
+  // System Users Management (TI & Individual Barber Panels)
+  systemUsers: UserAccount[];
+  createSystemUser: (user: Omit<UserAccount, 'id' | 'createdAt'>) => UserAccount;
+  updateSystemUser: (user: UserAccount) => void;
+  revokeSystemUserAccess: (id: string, reason?: string) => void;
+  restoreSystemUserAccess: (id: string) => void;
+  resetSystemUserPassword: (id: string, tempPassword?: string) => void;
+  deleteSystemUser: (id: string) => void;
+  changeCurrentUserPassword: (newPassword: string) => void;
 
   // Navigation & modals
   setActiveView: (view: 'client' | 'admin' | 'my_bookings') => void;
@@ -129,10 +175,39 @@ interface AppContextType {
   sendCustomerMessage: (appointmentId: string, channel: 'whatsapp' | 'email' | 'sms', content: string) => void;
   sendEmailNotification: (appointmentId: string, email: string) => void;
 
+  // Google Calendar Integration
+  googleCalendarSyncState: GoogleCalendarSyncState;
+  connectGoogleCalendar: () => Promise<boolean>;
+  disconnectGoogleCalendar: () => Promise<void>;
+  syncAppointmentToGoogleCalendar: (appointmentId: string) => Promise<{ success: boolean; message: string; htmlLink?: string }>;
+  syncAllAppointmentsToGoogleCalendar: () => Promise<{ success: boolean; syncedCount: number; message: string }>;
+  deleteGoogleCalendarEventForAppt: (appointmentId: string, confirmed?: boolean) => Promise<{ success: boolean; message: string }>;
+  fetchUpcomingGoogleCalendarEvents: () => Promise<GoogleCalendarEvent[]>;
+
   // Services CRUD
   createService: (service: Omit<Service, 'id'>) => void;
   updateService: (service: Service) => void;
   deleteService: (id: string) => void;
+
+  // Monthly Packages (Clube VIP & Assinaturas)
+  packages: MonthlyPackage[];
+  createPackage: (pkg: Omit<MonthlyPackage, 'id'>) => void;
+  updatePackage: (pkg: MonthlyPackage) => void;
+  deletePackage: (id: string) => void;
+
+  // Grooming Products (Pomadas, Barba, Gel, Shampoos)
+  products: BarberProduct[];
+  createProduct: (prod: Omit<BarberProduct, 'id'>) => void;
+  updateProduct: (prod: BarberProduct) => void;
+  deleteProduct: (id: string) => void;
+
+  // Barber / Salon Self-Registration (Auto-onboarding with provisional password)
+  registerNewBarber: (data: BarberRegistrationData) => {
+    success: boolean;
+    tempPassword: string;
+    user: UserAccount;
+    professional: Professional;
+  };
 
   // Professionals CRUD
   createProfessional: (prof: Omit<Professional, 'id'>) => void;
@@ -150,10 +225,10 @@ interface AppContextType {
 
   // Auth & Session
   loginWithGoogle: (role?: 'customer' | 'admin') => UserAccount;
-  loginWithFacebook: (role?: 'customer' | 'admin') => UserAccount;
   loginWithDirect: (name: string, email: string, phone: string) => UserAccount;
-  loginAdminWithPassword: (password: string) => boolean;
+  loginAdminWithPassword: (password: string, userIdentifier?: string) => boolean;
   logout: () => void;
+  logoutAdmin: () => void;
   resetToDemoData: () => void;
 }
 
@@ -169,6 +244,9 @@ const STORAGE_KEYS = {
   SETTINGS: 'barberflow_settings_v1',
   USER: 'barberflow_current_user_v1',
   IS_ADMIN: 'barberflow_is_admin_v1',
+  SYSTEM_USERS: 'barberflow_system_users_v1',
+  PACKAGES: 'barberflow_packages_v1',
+  PRODUCTS: 'barberflow_products_v1',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -178,6 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!saved) return INITIAL_SERVICES;
     try {
       const parsed: Service[] = JSON.parse(saved);
+      if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_SERVICES;
       // Ensure typo/naming and image correction
       return parsed.map((s) => {
         if (s.id === 'srv-6' || s.name.toLowerCase().includes('pezinho') || s.name.toLowerCase().includes('acabanento')) {
@@ -200,17 +279,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [professionals, setProfessionals] = useState<Professional[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.PROFESSIONALS);
-    return saved ? JSON.parse(saved) : INITIAL_PROFESSIONALS;
+    if (!saved) return INITIAL_PROFESSIONALS;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((p: any) => ({
+          ...p,
+          workingDays: Array.isArray(p.workingDays) ? p.workingDays : [1, 2, 3, 4, 5, 6],
+          servicesOffered: Array.isArray(p.servicesOffered) ? p.servicesOffered : ['srv-1', 'srv-2', 'srv-3'],
+          daysOff: Array.isArray(p.daysOff) ? p.daysOff : [],
+        }));
+      }
+      return INITIAL_PROFESSIONALS;
+    } catch {
+      return INITIAL_PROFESSIONALS;
+    }
   });
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.APPOINTMENTS);
-    return saved ? JSON.parse(saved) : getInitialAppointments();
+    if (!saved) return getInitialAppointments();
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : getInitialAppointments();
+    } catch {
+      return getInitialAppointments();
+    }
   });
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+    if (!saved) return INITIAL_CUSTOMERS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : INITIAL_CUSTOMERS;
+    } catch {
+      return INITIAL_CUSTOMERS;
+    }
   });
 
   const [businessHours, setBusinessHours] = useState<BusinessHours>(() => {
@@ -220,7 +325,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.BLOCKED_TIMES);
-    return saved ? JSON.parse(saved) : INITIAL_BLOCKED_TIMES;
+    if (!saved) return INITIAL_BLOCKED_TIMES;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : INITIAL_BLOCKED_TIMES;
+    } catch {
+      return INITIAL_BLOCKED_TIMES;
+    }
   });
 
   const [settings, setSettings] = useState<ShopSettings>(() => {
@@ -240,11 +351,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved === 'true';
   });
 
-  const [activeView, setActiveView] = useState<'client' | 'admin' | 'my_bookings'>('client');
+  const [systemUsers, setSystemUsers] = useState<UserAccount[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.SYSTEM_USERS);
+    if (!saved) return INITIAL_SYSTEM_USERS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_SYSTEM_USERS;
+    } catch {
+      return INITIAL_SYSTEM_USERS;
+    }
+  });
+
+  // Monthly Subscription Packages
+  const [packages, setPackages] = useState<MonthlyPackage[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.PACKAGES);
+    if (!saved) return INITIAL_PACKAGES;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((p: any) => ({
+          ...p,
+          benefits: Array.isArray(p.benefits) ? p.benefits : [],
+        }));
+      }
+      return INITIAL_PACKAGES;
+    } catch {
+      return INITIAL_PACKAGES;
+    }
+  });
+
+  // Grooming Products (Pomadas, Barba, Gel, Shampoos)
+  const [products, setProducts] = useState<BarberProduct[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    if (!saved) return INITIAL_PRODUCTS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_PRODUCTS;
+    } catch {
+      return INITIAL_PRODUCTS;
+    }
+  });
+
+  const [activeView, setActiveView] = useState<'client' | 'admin' | 'barber' | 'my_bookings'>('client');
   const [selectedServiceForBooking, setSelectedServiceForBooking] = useState<Service | null>(null);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [isSocialLoginModalOpen, setIsSocialLoginModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
+
+  // QR Code & Password Management Modals
+  const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [isCompleteProfileModalOpen, setIsCompleteProfileModalOpen] = useState(false);
 
   // Admin & Notification Modals
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
@@ -261,11 +418,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
   const [selectedApptForDecline, setSelectedApptForDecline] = useState<Appointment | null>(null);
 
+  // Google Calendar Integration State (Token kept in memory only)
+  const [googleCalendarSyncState, setGoogleCalendarSyncState] = useState<GoogleCalendarSyncState>({
+    isConnected: false,
+    userEmail: null,
+    userName: null,
+    userAvatar: null,
+    lastSyncedAt: null,
+    isSyncing: false,
+    totalEventsSynced: 0,
+  });
+
   // Push Notifications (Service Worker) State & Permissions
   const [pushPermissionStatus, setPushPermissionStatus] = useState<PushPermissionStatus>(() =>
     pushNotificationService.getPermissionStatus()
   );
   const isPushSupported = pushNotificationService.isSupported();
+
+  // Initialize Google Calendar Auth Listener
+  useEffect(() => {
+    const unsub = initGoogleCalendarAuth(
+      (user) => {
+        setGoogleCalendarSyncState((prev) => ({
+          ...prev,
+          isConnected: true,
+          userEmail: user.email,
+          userName: user.displayName || user.email?.split('@')[0] || 'Usuário Google',
+          userAvatar: user.photoURL,
+        }));
+      },
+      () => {
+        setGoogleCalendarSyncState((prev) => ({
+          ...prev,
+          isConnected: false,
+          userEmail: null,
+          userName: null,
+          userAvatar: null,
+        }));
+      }
+    );
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
 
   // Initialize Service Worker & Push Notification Listeners
   useEffect(() => {
@@ -365,6 +560,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  // Trigger Client-Facing Push Notification for Booking Confirmation
+  const notifyClientBookingConfirmed = async (appointmentId: string): Promise<boolean> => {
+    const appt = appointments.find((a) => a.id === appointmentId);
+    if (!appt) return false;
+
+    const svc = services.find((s) => s.id === appt.serviceId);
+    const barber = professionals.find((p) => p.id === appt.professionalId);
+
+    const success = await pushNotificationService.notifyClientBookingConfirmed(
+      appt,
+      svc?.name || 'Serviço',
+      barber?.name || 'Barbeiro',
+      {
+        playSound: settings.playNotificationSound !== false,
+        vibration: settings.vibrationEnabled !== false,
+      }
+    );
+
+    if (success) {
+      showToast(`🔔 Notificação Push de confirmação enviada para ${appt.customerName}!`, 'success');
+    }
+    return success;
+  };
+
+  // Trigger Client-Facing Haircut Reminder Push Notification (Lembrete de Corte)
+  const sendClientHaircutReminder = async (
+    appointmentId: string,
+    reminderType: '1_hour_before' | 'today' | 'tomorrow' | 'maintenance_15d' | 'maintenance_30d' = '1_hour_before',
+    customMessage?: string
+  ): Promise<boolean> => {
+    const appt = appointments.find((a) => a.id === appointmentId);
+    if (!appt) return false;
+
+    // Check / prompt permission if not yet granted
+    if (pushNotificationService.getPermissionStatus() !== 'granted') {
+      try {
+        const requested = await pushNotificationService.requestPermission();
+        setPushPermissionStatus(requested);
+      } catch {}
+    }
+
+    const svc = services.find((s) => s.id === appt.serviceId);
+    const barber = professionals.find((p) => p.id === appt.professionalId);
+
+    const success = await pushNotificationService.notifyClientHaircutReminder(
+      appt,
+      svc?.name || 'Serviço',
+      barber?.name || 'Barbeiro',
+      reminderType,
+      customMessage,
+      {
+        playSound: settings.playNotificationSound !== false,
+        vibration: settings.vibrationEnabled !== false,
+      }
+    );
+
+    const typeLabels = {
+      '1_hour_before': 'Lembrete de 1 hora antes',
+      'today': 'Lembrete do dia do corte',
+      'tomorrow': 'Lembrete de véspera (amanhã)',
+      'maintenance_15d': 'Lembrete de retorno (15 dias)',
+      'maintenance_30d': 'Lembrete de retorno (30 dias)',
+      'custom': 'Lembrete personalizado',
+    };
+
+    showToast(`✂️ ${typeLabels[reminderType] || 'Lembrete de Corte'} disparado com sucesso via Push Notification!`, 'success');
+    return success;
+  };
+
   // 30-Second Real-Time Auto-Refresh & Synchronization Engine
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number>(Date.now());
   const [refreshCountdown, setRefreshCountdown] = useState<number>(30);
@@ -428,6 +692,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return appt;
     });
+
+    // 2. Check and trigger scheduled native push notifications and haircut reminders for today
+    pushNotificationService.checkAndTriggerScheduledReminders(
+      baseList,
+      services,
+      professionals,
+      { playSound: settings.playNotificationSound !== false }
+    );
 
     setAppointments(updated);
   };
@@ -1209,41 +1481,285 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Observações do cliente atualizadas.', 'success');
   };
 
+  // Monthly Packages (Clube VIP) CRUD
+  const createPackage = (pkgData: Omit<MonthlyPackage, 'id'>) => {
+    const newPkg: MonthlyPackage = {
+      ...pkgData,
+      id: `pkg-${Date.now()}`,
+    };
+    setPackages((prev) => [newPkg, ...prev]);
+    showToast(`Pacote "${newPkg.name}" criado com sucesso!`, 'success');
+  };
+
+  const updatePackage = (updated: MonthlyPackage) => {
+    setPackages((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    showToast(`Pacote "${updated.name}" atualizado.`, 'success');
+  };
+
+  const deletePackage = (id: string) => {
+    setPackages((prev) => prev.filter((p) => p.id !== id));
+    showToast('Pacote removido com sucesso.', 'info');
+  };
+
+  // Grooming Products CRUD
+  const createProduct = (prodData: Omit<BarberProduct, 'id'>) => {
+    const newProd: BarberProduct = {
+      ...prodData,
+      id: `prod-${Date.now()}`,
+    };
+    setProducts((prev) => [newProd, ...prev]);
+    showToast(`Produto "${newProd.name}" cadastrado no estoque!`, 'success');
+  };
+
+  const updateProduct = (updated: BarberProduct) => {
+    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    showToast(`Produto "${updated.name}" atualizado.`, 'success');
+  };
+
+  const deleteProduct = (id: string) => {
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+    showToast('Produto removido do catálogo.', 'info');
+  };
+
+  // Barber / Salon Self-Registration (Auto-onboarding with provisional password)
+  const registerNewBarber = (data: BarberRegistrationData) => {
+    const randomCode = Math.floor(100000 + Math.random() * 900000);
+    const tempPassword = `BARBER-${randomCode}`;
+    const profId = `prof-${Date.now().toString(36)}`;
+    const userId = `usr-barber-${Date.now().toString(36)}`;
+
+    const displayName = data.accountType === 'salon' && data.salonName ? data.salonName : data.name;
+
+    const newProfessional: Professional = {
+      id: profId,
+      name: displayName,
+      specialty:
+        data.specialties.length > 0
+          ? data.specialties.join(', ')
+          : data.accountType === 'salon'
+          ? 'Salão & Barbearia Completa'
+          : 'Barbeiro Profissional & Visagista',
+      rating: 5.0,
+      reviewsCount: 0,
+      avatar:
+        data.avatar ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      bio:
+        data.bio ||
+        (data.accountType === 'salon'
+          ? `Estabelecimento ${displayName} - Atendimento de alto padrão com agendamento online e equipe qualificada.`
+          : `Barbeiro profissional ${data.name} especializado em visagismo masculino e cortes de alta precisão.`),
+      active: true,
+      servicesOffered: services.map((s) => s.id),
+      workingDays: [1, 2, 3, 4, 5, 6],
+      startTime: '09:00',
+      endTime: '20:00',
+      lunchStart: '12:00',
+      lunchEnd: '13:00',
+      daysOff: [],
+      isSalon: data.accountType === 'salon',
+      salonName: data.salonName,
+      cnpj: data.cnpj,
+      cpf: data.cpf,
+      phone: data.phone,
+      email: data.email,
+      address: `${data.address}, ${data.number} - ${data.neighborhood}`,
+      city: `${data.city} - ${data.state}`,
+      zipCode: data.zipCode,
+      pixKey: data.pixKey,
+      pixKeyType: data.pixKeyType,
+    };
+
+    const newUser: UserAccount = {
+      id: userId,
+      name: displayName,
+      email: data.email.trim().toLowerCase(),
+      phone: data.phone,
+      avatar: newProfessional.avatar,
+      role: 'barber',
+      professionalId: profId,
+      provider: 'direct',
+      active: true,
+      mustChangePassword: true, // Forces first-time password reset on first login!
+      password: tempPassword,
+      createdAt: new Date().toISOString(),
+    };
+
+    setProfessionals((prev) => [...prev, newProfessional]);
+    setSystemUsers((prev) => [...prev, newUser]);
+
+    showToast(`Cadastro de ${displayName} realizado com sucesso!`, 'success');
+
+    return {
+      success: true,
+      tempPassword,
+      user: newUser,
+      professional: newProfessional,
+    };
+  };
+
+  // Persist packages, products, and system users to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(packages));
+  }, [packages]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SYSTEM_USERS, JSON.stringify(systemUsers));
+  }, [systemUsers]);
+
+  // Modal helpers
+  const openQrCodeModal = () => setIsQrCodeModalOpen(true);
+  const closeQrCodeModal = () => setIsQrCodeModalOpen(false);
+
+  const openChangePasswordModal = () => setIsChangePasswordModalOpen(true);
+  const closeChangePasswordModal = () => setIsChangePasswordModalOpen(false);
+
+  const openCompleteProfileModal = () => setIsCompleteProfileModalOpen(true);
+  const closeCompleteProfileModal = () => setIsCompleteProfileModalOpen(false);
+
+  // System Users Management (TI & Individual Barber Panels)
+  const createSystemUser = (userData: Omit<UserAccount, 'id' | 'createdAt'>): UserAccount => {
+    const newUser: UserAccount = {
+      ...userData,
+      id: `usr-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      active: true,
+    };
+    setSystemUsers((prev) => [newUser, ...prev]);
+    return newUser;
+  };
+
+  const updateSystemUser = (updatedUser: UserAccount) => {
+    setSystemUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    if (currentUser?.id === updatedUser.id) {
+      setCurrentUser(updatedUser);
+    }
+  };
+
+  const revokeSystemUserAccess = (id: string, reason?: string) => {
+    setSystemUsers((prev) =>
+      prev.map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              active: false,
+              revokedAt: new Date().toISOString(),
+              revokedReason: reason || 'Acesso revogado pelo Administrador de TI',
+            }
+          : u
+      )
+    );
+
+    // If current logged-in user is the revoked one, kick out immediately
+    if (currentUser?.id === id) {
+      setCurrentUser(null);
+      setIsAdminAuthenticated(false);
+      setActiveView('client');
+      showToast('Seu acesso ao sistema foi revogado pelo Administrador de TI.', 'error');
+    } else {
+      showToast('Acesso do funcionário revogado com sucesso!', 'info');
+    }
+  };
+
+  const restoreSystemUserAccess = (id: string) => {
+    setSystemUsers((prev) =>
+      prev.map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              active: true,
+              revokedAt: undefined,
+              revokedReason: undefined,
+            }
+          : u
+      )
+    );
+    showToast('Acesso do funcionário restaurado com sucesso!', 'success');
+  };
+
+  const resetSystemUserPassword = (id: string, tempPassword = '1234') => {
+    setSystemUsers((prev) =>
+      prev.map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              password: tempPassword,
+              mustChangePassword: true, // Requires mandatory password change on first login!
+            }
+          : u
+      )
+    );
+    showToast(`Senha redefinida para "${tempPassword}". Troca obrigatória ativada no próximo login.`, 'success');
+  };
+
+  const deleteSystemUser = (id: string) => {
+    setSystemUsers((prev) => prev.filter((u) => u.id !== id));
+    showToast('Cadastro de usuário removido com sucesso.', 'info');
+  };
+
+  const changeCurrentUserPassword = (newPassword: string) => {
+    if (!currentUser) return;
+    const updated: UserAccount = {
+      ...currentUser,
+      password: newPassword,
+      mustChangePassword: false,
+    };
+    setCurrentUser(updated);
+    setSystemUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+    setIsChangePasswordModalOpen(false);
+    showToast('Senha pessoal salva com sucesso! Acesso concedido.', 'success');
+  };
+
+  const completeUserProfile = (name: string, email: string, phone: string) => {
+    if (currentUser) {
+      const updated: UserAccount = {
+        ...currentUser,
+        name,
+        email,
+        phone,
+      };
+      setCurrentUser(updated);
+    } else {
+      const newUser: UserAccount = {
+        id: `usr-direct-${Date.now()}`,
+        name,
+        email,
+        phone,
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+        role: 'customer',
+        provider: 'direct',
+        active: true,
+        mustChangePassword: false,
+      };
+      setCurrentUser(newUser);
+    }
+    setIsCompleteProfileModalOpen(false);
+    showToast('Perfil de cliente confirmado com sucesso!', 'success');
+  };
+
   // Social & Admin Authentication
   const loginWithGoogle = (role: 'customer' | 'admin' = 'customer'): UserAccount => {
     const user: UserAccount = {
       id: `usr-google-${Date.now()}`,
-      name: role === 'admin' ? ADMIN_USER.name : 'Matheus Alcantara',
+      name: role === 'admin' ? ADMIN_USER.name : 'Matheus Briza',
       email: role === 'admin' ? ADMIN_USER.email : 'MatheusBriza84@gmail.com',
       phone: '(11) 98877-6655',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-      role: role,
+      role: role === 'admin' ? 'super_admin' : 'customer',
       provider: 'google',
+      active: true,
+      mustChangePassword: false,
     };
     setCurrentUser(user);
     if (role === 'admin') {
       setIsAdminAuthenticated(true);
+      setActiveView('admin');
     }
     showToast(`Conectado com Google como ${user.name}!`, 'success');
-    setIsSocialLoginModalOpen(false);
-    return user;
-  };
-
-  const loginWithFacebook = (role: 'customer' | 'admin' = 'customer'): UserAccount => {
-    const user: UserAccount = {
-      id: `usr-fb-${Date.now()}`,
-      name: 'Lucas Brandão',
-      email: 'lucas.brandao@facebook.com',
-      phone: '(11) 97654-3344',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=200&q=80',
-      role: role,
-      provider: 'facebook',
-    };
-    setCurrentUser(user);
-    if (role === 'admin') {
-      setIsAdminAuthenticated(true);
-    }
-    showToast(`Conectado com Facebook como ${user.name}!`, 'success');
     setIsSocialLoginModalOpen(false);
     return user;
   };
@@ -1257,24 +1773,267 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
       role: 'customer',
       provider: 'direct',
+      active: true,
+      mustChangePassword: false,
     };
     setCurrentUser(user);
-    showToast(`Bem-vindo, ${name}!`, 'success');
+    showToast(`Bem-vindo, ${name}! Cadastro efetuado com sucesso.`, 'success');
     setIsSocialLoginModalOpen(false);
     return user;
   };
 
-  const loginAdminWithPassword = (password: string): boolean => {
-    // Standard secure demo unlock or master pin '1234' or 'barberflow'
-    if (password === '1234' || password === 'admin' || password === 'barberflow') {
-      setCurrentUser(ADMIN_USER);
-      setIsAdminAuthenticated(true);
-      setActiveView('admin');
-      showToast('Acesso de Administrador liberado!', 'success');
-      return true;
+  const loginAdminWithPassword = (password: string, userIdentifier?: string): boolean => {
+    let matchedUser: UserAccount | undefined;
+
+    if (userIdentifier && userIdentifier.trim()) {
+      const q = userIdentifier.trim().toLowerCase();
+      matchedUser = systemUsers.find(
+        (u) =>
+          u.email.toLowerCase() === q ||
+          u.name.toLowerCase() === q ||
+          u.id.toLowerCase() === q
+      );
+
+      // Check for default TI admin alias
+      if (!matchedUser && (q === 'admin' || q === 'admin@barberflow.com.br' || q === 'ti')) {
+        matchedUser = systemUsers.find((u) => u.role === 'super_admin') || ADMIN_USER;
+      }
+    } else {
+      // If no identifier, try super admin
+      matchedUser = systemUsers.find((u) => u.role === 'super_admin') || ADMIN_USER;
     }
-    showToast('Senha incorreta! Dica: use "1234" ou "admin"', 'error');
-    return false;
+
+    if (!matchedUser) {
+      showToast('Credenciais não encontradas. Verifique o e-mail ou usuário informado.', 'error');
+      return false;
+    }
+
+    // Check if account is revoked / deactivated
+    if (matchedUser.active === false) {
+      showToast(
+        `Acesso Revogado! O Administrador de TI bloqueou este login. Motivo: ${matchedUser.revokedReason || 'Acesso suspenso'}`,
+        'error'
+      );
+      return false;
+    }
+
+    // Validate password: exact user password (or master PIN for TI accounts)
+    const validPassword = matchedUser.password || '1234';
+    const isMasterPin = (matchedUser.role === 'super_admin') && (password === '1234' || password === 'admin' || password === 'barberflow');
+
+    if (password !== validPassword && !isMasterPin) {
+      showToast('Senha de acesso incorreta. Tente novamente.', 'error');
+      return false;
+    }
+
+    // Authenticate
+    const authedUser: UserAccount = {
+      ...matchedUser,
+      lastLogin: new Date().toISOString(),
+    };
+    setCurrentUser(authedUser);
+    setIsAdminAuthenticated(true);
+
+    // Route according to role: Barbers to Barber Panel, TI/Admins to Admin Panel
+    if (authedUser.role === 'barber') {
+      setActiveView('barber');
+    } else {
+      setActiveView('admin');
+    }
+
+    setIsSocialLoginModalOpen(false);
+
+    // If must change password on first login
+    if (authedUser.mustChangePassword) {
+      setIsChangePasswordModalOpen(true);
+    } else {
+      showToast(
+        `Bem-vindo, ${authedUser.name}! Painel ${authedUser.role === 'super_admin' ? 'T.I. / Administrador Master' : 'do Barbeiro'} acessado com sucesso.`,
+        'success'
+      );
+    }
+
+    return true;
+  };
+
+  const connectGoogleCalendar = async (): Promise<boolean> => {
+    try {
+      setGoogleCalendarSyncState((prev) => ({ ...prev, isSyncing: true }));
+      const result = await signInWithGoogleCalendar();
+      if (result) {
+        setGoogleCalendarSyncState({
+          isConnected: true,
+          userEmail: result.user.email,
+          userName: result.user.displayName || result.user.email?.split('@')[0] || 'Usuário Google',
+          userAvatar: result.user.photoURL,
+          lastSyncedAt: new Date().toISOString(),
+          isSyncing: false,
+          totalEventsSynced: appointments.filter((a) => a.googleCalendarSynced).length,
+        });
+        showToast(`Google Calendar conectado com sucesso (${result.user.email})!`, 'success');
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.error('Erro ao conectar Google Calendar:', err);
+      showToast(err.message || 'Falha ao conectar com Google Calendar.', 'error');
+      setGoogleCalendarSyncState((prev) => ({ ...prev, isSyncing: false }));
+      return false;
+    }
+  };
+
+  const disconnectGoogleCalendar = async () => {
+    await logoutGoogleCalendar();
+    setGoogleCalendarSyncState({
+      isConnected: false,
+      userEmail: null,
+      userName: null,
+      userAvatar: null,
+      lastSyncedAt: null,
+      isSyncing: false,
+      totalEventsSynced: 0,
+    });
+    showToast('Conta Google desconectada.', 'info');
+  };
+
+  const syncAppointmentToGoogleCalendar = async (
+    appointmentId: string
+  ): Promise<{ success: boolean; message: string; htmlLink?: string }> => {
+    const appt = appointments.find((a) => a.id === appointmentId);
+    if (!appt) return { success: false, message: 'Agendamento não encontrado' };
+    const svc = services.find((s) => s.id === appt.serviceId) || services[0];
+    const prof = professionals.find((p) => p.id === appt.professionalId) || professionals[0];
+
+    let token = getCalendarAccessToken();
+    if (!token) {
+      const connected = await connectGoogleCalendar();
+      if (!connected) {
+        return { success: false, message: 'Conecte sua conta Google Calendar para sincronizar.' };
+      }
+      token = getCalendarAccessToken();
+    }
+
+    setGoogleCalendarSyncState((prev) => ({ ...prev, isSyncing: true }));
+    const res = await createGoogleCalendarEvent(appt, svc, prof, settings, token || undefined);
+    setGoogleCalendarSyncState((prev) => ({ ...prev, isSyncing: false }));
+
+    if (res.success && res.eventId) {
+      setAppointments((prev) =>
+        prev.map((a) =>
+          a.id === appointmentId
+            ? {
+                ...a,
+                googleCalendarEventId: res.eventId,
+                googleCalendarSynced: true,
+                googleCalendarHtmlLink: res.htmlLink,
+              }
+            : a
+        )
+      );
+      setGoogleCalendarSyncState((prev) => ({
+        ...prev,
+        lastSyncedAt: new Date().toISOString(),
+        totalEventsSynced: prev.totalEventsSynced + 1,
+      }));
+      showToast(`Agendamento #${appt.code} sincronizado com seu Google Agenda!`, 'success');
+      return { success: true, message: 'Sincronizado com sucesso!', htmlLink: res.htmlLink };
+    } else {
+      showToast(res.error || 'Erro ao sincronizar com Google Calendar', 'error');
+      return { success: false, message: res.error || 'Erro ao sincronizar' };
+    }
+  };
+
+  const syncAllAppointmentsToGoogleCalendar = async (): Promise<{
+    success: boolean;
+    syncedCount: number;
+    message: string;
+  }> => {
+    let token = getCalendarAccessToken();
+    if (!token) {
+      const connected = await connectGoogleCalendar();
+      if (!connected) {
+        return { success: false, syncedCount: 0, message: 'Conexão cancelada.' };
+      }
+      token = getCalendarAccessToken();
+    }
+
+    setGoogleCalendarSyncState((prev) => ({ ...prev, isSyncing: true }));
+    let count = 0;
+    const activeAppts = appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'declined');
+
+    for (const appt of activeAppts) {
+      if (appt.googleCalendarSynced && appt.googleCalendarEventId) continue;
+      const svc = services.find((s) => s.id === appt.serviceId) || services[0];
+      const prof = professionals.find((p) => p.id === appt.professionalId) || professionals[0];
+
+      const res = await createGoogleCalendarEvent(appt, svc, prof, settings, token || undefined);
+      if (res.success && res.eventId) {
+        count++;
+        setAppointments((prev) =>
+          prev.map((a) =>
+            a.id === appt.id
+              ? {
+                  ...a,
+                  googleCalendarEventId: res.eventId,
+                  googleCalendarSynced: true,
+                  googleCalendarHtmlLink: res.htmlLink,
+                }
+              : a
+          )
+        );
+      }
+    }
+
+    setGoogleCalendarSyncState((prev) => ({
+      ...prev,
+      isSyncing: false,
+      lastSyncedAt: new Date().toISOString(),
+      totalEventsSynced: prev.totalEventsSynced + count,
+    }));
+
+    showToast(`${count} agendamento(s) sincronizados com o Google Agenda!`, 'success');
+    return { success: true, syncedCount: count, message: `${count} sincronizados` };
+  };
+
+  const deleteGoogleCalendarEventForAppt = async (
+    appointmentId: string,
+    confirmed: boolean = true
+  ): Promise<{ success: boolean; message: string }> => {
+    const appt = appointments.find((a) => a.id === appointmentId);
+    if (!appt || !appt.googleCalendarEventId) {
+      return { success: false, message: 'Evento não vinculado no Google Calendar.' };
+    }
+
+    if (!confirmed) {
+      return { success: false, message: 'Operação cancelada.' };
+    }
+
+    const res = await deleteGoogleCalendarEvent(appt.googleCalendarEventId);
+    if (res.success) {
+      setAppointments((prev) =>
+        prev.map((a) =>
+          a.id === appointmentId
+            ? {
+                ...a,
+                googleCalendarEventId: undefined,
+                googleCalendarSynced: false,
+                googleCalendarHtmlLink: undefined,
+              }
+            : a
+        )
+      );
+      showToast(`Evento removido do Google Agenda (#${appt.code})`, 'info');
+      return { success: true, message: 'Evento removido com sucesso.' };
+    } else {
+      showToast(res.error || 'Erro ao remover evento do Google Calendar', 'error');
+      return { success: false, message: res.error || 'Erro' };
+    }
+  };
+
+  const fetchUpcomingGoogleCalendarEvents = async (): Promise<GoogleCalendarEvent[]> => {
+    const now = new Date().toISOString();
+    const res = await listGoogleCalendarEvents(now);
+    return res.events || [];
   };
 
   const logout = () => {
@@ -1321,6 +2080,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isPushSupported,
         requestPushPermission,
         sendTestPushNotification,
+        sendClientHaircutReminder,
+        notifyClientBookingConfirmed,
         professionalLiveStates,
         lastSyncTimestamp,
         refreshCountdown,
@@ -1336,6 +2097,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectedApptForReschedule,
         isDeclineModalOpen,
         selectedApptForDecline,
+        isQrCodeModalOpen,
+        openQrCodeModal,
+        closeQrCodeModal,
+        isChangePasswordModalOpen,
+        openChangePasswordModal,
+        closeChangePasswordModal,
+        isCompleteProfileModalOpen,
+        openCompleteProfileModal,
+        closeCompleteProfileModal,
+        completeUserProfile,
+        systemUsers,
+        createSystemUser,
+        updateSystemUser,
+        revokeSystemUserAccess,
+        restoreSystemUserAccess,
+        resetSystemUserPassword,
+        deleteSystemUser,
+        changeCurrentUserPassword,
         setActiveView,
         openBookingModal,
         closeBookingModal,
@@ -1359,9 +2138,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelAppointment,
         sendCustomerMessage,
         sendEmailNotification,
+        googleCalendarSyncState,
+        connectGoogleCalendar,
+        disconnectGoogleCalendar,
+        syncAppointmentToGoogleCalendar,
+        syncAllAppointmentsToGoogleCalendar,
+        deleteGoogleCalendarEventForAppt,
+        fetchUpcomingGoogleCalendarEvents,
         createService,
         updateService,
         deleteService,
+        packages,
+        createPackage,
+        updatePackage,
+        deletePackage,
+        products,
+        createProduct,
+        updateProduct,
+        deleteProduct,
+        registerNewBarber,
         createProfessional,
         updateProfessional,
         deleteProfessional,
@@ -1371,7 +2166,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateSettings,
         updateCustomerNotes,
         loginWithGoogle,
-        loginWithFacebook,
         loginWithDirect,
         loginAdminWithPassword,
         logout,

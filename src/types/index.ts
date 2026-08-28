@@ -10,6 +10,63 @@ export interface Service {
   image: string;
   active: boolean;
   popular?: boolean;
+  barberId?: string; // Optional: 'all' or specific professionalId
+}
+
+export type ProductCategory = 'pomadas' | 'barba' | 'shampoo' | 'acessorios' | 'finalizador';
+
+export interface BarberProduct {
+  id: string;
+  name: string;
+  brand: string;
+  category: ProductCategory;
+  description: string;
+  price: number;
+  promotionalPrice?: number;
+  image: string;
+  stock: number;
+  active: boolean;
+  barberId?: string; // 'all' or specific professionalId
+  barberName?: string;
+  featured?: boolean;
+}
+
+export interface MonthlyPackage {
+  id: string;
+  name: string;
+  tagline?: string;
+  description: string;
+  price: number; // R$ per month
+  benefits: string[];
+  servicesIncludedText: string;
+  cutsPerMonth: number | 'unlimited';
+  beardsPerMonth: number | 'unlimited';
+  image: string;
+  active: boolean;
+  popular?: boolean;
+  barberId?: string; // 'all' or specific professionalId
+  barberName?: string;
+}
+
+export interface BarberRegistrationData {
+  accountType: 'individual' | 'salon';
+  name: string;
+  salonName?: string;
+  cnpj?: string;
+  cpf?: string;
+  email: string;
+  phone: string;
+  zipCode: string;
+  address: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  pixKey: string;
+  pixKeyType: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+  specialties: string[];
+  avatar: string;
+  bio?: string;
 }
 
 export interface WorkingDayConfig {
@@ -37,6 +94,19 @@ export interface Professional {
   lunchStart: string;        // "12:00"
   lunchEnd: string;          // "13:00"
   daysOff: string[];        // Array of "YYYY-MM-DD"
+  // Extended fields for BarberFlow SaaS
+  isSalon?: boolean;
+  salonName?: string;
+  cnpj?: string;
+  cpf?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  zipCode?: string;
+  pixKey?: string;
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+  pixQrCodeUrl?: string;
 }
 
 export type AppointmentStatus =
@@ -48,7 +118,7 @@ export type AppointmentStatus =
   | 'cancelled'
   | 'no_show';
 
-export type AuthProvider = 'google' | 'facebook' | 'direct' | 'manual';
+export type AuthProvider = 'google' | 'direct' | 'manual';
 
 export interface SentMessageLog {
   id: string;
@@ -87,6 +157,9 @@ export interface Appointment {
   rejectionReason?: string;
   emailNotificationSent?: boolean;
   whatsappNotificationSent?: boolean;
+  googleCalendarEventId?: string;
+  googleCalendarSynced?: boolean;
+  googleCalendarHtmlLink?: string;
   lastMessageSent?: SentMessageLog;
   history?: AppointmentHistoryEntry[];
 }
@@ -175,6 +248,11 @@ export interface ShopSettings {
     pass?: string;
     from?: string;
   };
+  // Pix and Online Advance Payment
+  pixKey?: string;
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+  pixReceiverName?: string;
+  pixCity?: string;
 }
 
 export interface EmailLog {
@@ -207,14 +285,24 @@ export interface EmailDiagnostics {
   logs: EmailLog[];
 }
 
+export type UserRole = 'super_admin' | 'admin' | 'staff' | 'barber' | 'customer';
+
 export interface UserAccount {
   id: string;
   name: string;
   email: string;
-  phone?: string;
+  phone: string;
   avatar: string;
-  role: 'admin' | 'staff' | 'customer';
+  role: UserRole;
   provider: AuthProvider;
+  professionalId?: string; // Links account to a specific barber/hairdresser
+  active: boolean; // IT Admin can revoke or restore access
+  mustChangePassword?: boolean; // Force change password on first login
+  password?: string; // Stored demo password hash / credentials
+  createdAt?: string;
+  lastLogin?: string;
+  revokedAt?: string;
+  revokedReason?: string;
 }
 
 export interface Review {
@@ -246,5 +334,26 @@ export interface ProfessionalLiveState {
   totalTodayCount: number;
   todayRevenue: number;
   minutesRemainingInService?: number;
+}
+
+export interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  htmlLink?: string;
+  status?: string;
+}
+
+export interface GoogleCalendarSyncState {
+  isConnected: boolean;
+  userEmail: string | null;
+  userName: string | null;
+  userAvatar: string | null;
+  lastSyncedAt: string | null;
+  isSyncing: boolean;
+  totalEventsSynced: number;
 }
 

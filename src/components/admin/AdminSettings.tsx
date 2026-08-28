@@ -33,6 +33,11 @@ import {
   FileText,
   HelpCircle,
   ExternalLink,
+  Calendar,
+  CalendarCheck,
+  CalendarPlus,
+  LogOut,
+  Check,
 } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
@@ -45,6 +50,11 @@ export const AdminSettings: React.FC = () => {
     isPushSupported,
     requestPushPermission,
     sendTestPushNotification,
+    googleCalendarSyncState,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
+    syncAllAppointmentsToGoogleCalendar,
+    fetchUpcomingGoogleCalendarEvents,
   } = useApp();
 
   const [formData, setFormData] = useState<ShopSettings>(settings);
@@ -58,6 +68,29 @@ export const AdminSettings: React.FC = () => {
     success?: boolean;
     message?: string;
   } | null>(null);
+
+  // Google Calendar Upcoming Events
+  const [upcomingGCalEvents, setUpcomingGCalEvents] = useState<any[]>([]);
+  const [isLoadingGCalEvents, setIsLoadingGCalEvents] = useState(false);
+
+  const loadGCalEvents = async () => {
+    if (!googleCalendarSyncState.isConnected) return;
+    setIsLoadingGCalEvents(true);
+    try {
+      const events = await fetchUpcomingGoogleCalendarEvents();
+      setUpcomingGCalEvents(events);
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingGCalEvents(false);
+    }
+  };
+
+  useEffect(() => {
+    if (googleCalendarSyncState.isConnected) {
+      loadGCalEvents();
+    }
+  }, [googleCalendarSyncState.isConnected]);
 
   // Diagnostics & Logs State
   const [diagnostics, setDiagnostics] = useState<EmailDiagnostics | null>(null);
@@ -387,6 +420,157 @@ export const AdminSettings: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Google Calendar (Google Agenda) Integration Card */}
+        <div className="bg-zinc-900 border border-blue-500/30 rounded-3xl p-6 shadow-xl space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <div className="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <span>Google Agenda (Google Calendar) API</span>
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Conecte a conta Google da barbearia para sincronização bidirecional de atendimentos, notificações e bloqueios.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {googleCalendarSyncState.isConnected ? (
+                <button
+                  type="button"
+                  id="admin-disconnect-gcal-btn"
+                  onClick={() => {
+                    if (window.confirm('Deseja desconectar a integração com Google Calendar?')) {
+                      disconnectGoogleCalendar();
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-red-950/60 hover:text-red-300 text-zinc-300 text-xs font-semibold rounded-xl border border-zinc-700 hover:border-red-800 flex items-center gap-1.5 transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Desconectar</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  id="admin-connect-gcal-btn"
+                  onClick={() => connectGoogleCalendar()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md"
+                >
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                  <span>Conectar com Google</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Connection Status Banner */}
+          <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                  googleCalendarSyncState.isConnected
+                    ? 'bg-emerald-500 animate-pulse'
+                    : 'bg-zinc-600'
+                }`}
+              />
+              <div>
+                <span className="font-bold text-white block">
+                  {googleCalendarSyncState.isConnected
+                    ? `Conectado como: ${googleCalendarSyncState.userName || googleCalendarSyncState.userEmail}`
+                    : 'Nenhuma conta Google conectada no momento'}
+                </span>
+                <span className="text-[11px] text-zinc-400">
+                  {googleCalendarSyncState.isConnected
+                    ? `E-mail: ${googleCalendarSyncState.userEmail} • Permissão de leitura e escrita concedida`
+                    : 'Clique em "Conectar com Google" para autenticar e habilitar sincronização em tempo real'}
+                </span>
+              </div>
+            </div>
+
+            {googleCalendarSyncState.isConnected && (
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <button
+                  type="button"
+                  id="admin-sync-all-gcal-btn"
+                  onClick={() => syncAllAppointmentsToGoogleCalendar()}
+                  disabled={googleCalendarSyncState.isSyncing}
+                  className="w-full md:w-auto px-3.5 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl font-bold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${googleCalendarSyncState.isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{googleCalendarSyncState.isSyncing ? 'Sincronizando...' : 'Sincronizar Todos os Agendamentos'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={loadGCalEvents}
+                  disabled={isLoadingGCalEvents}
+                  className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl border border-zinc-700 transition-colors"
+                  title="Atualizar lista de eventos"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGCalEvents ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Upcoming Events from Google Calendar if connected */}
+          {googleCalendarSyncState.isConnected && (
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                  <CalendarCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Próximos Eventos Sincronizados no Google Calendar ({upcomingGCalEvents.length})</span>
+                </h4>
+              </div>
+
+              {isLoadingGCalEvents ? (
+                <div className="p-4 bg-zinc-950/60 rounded-2xl border border-zinc-800 text-center text-xs text-zinc-400">
+                  <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1 text-blue-400" />
+                  <span>Carregando eventos da sua agenda Google...</span>
+                </div>
+              ) : upcomingGCalEvents.length === 0 ? (
+                <div className="p-4 bg-zinc-950/60 rounded-2xl border border-zinc-800 text-center text-xs text-zinc-500">
+                  <span>Nenhum evento futuro encontrado na agenda principal. Clique em &quot;Sincronizar Todos os Agendamentos&quot; para enviar os agendamentos da barbearia.</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                  {upcomingGCalEvents.map((evt) => {
+                    const startStr = evt.start?.dateTime || evt.start?.date || '';
+                    const startDate = startStr ? new Date(startStr) : null;
+                    return (
+                      <div
+                        key={evt.id}
+                        className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-2xl flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-bold text-white block truncate">
+                            {evt.summary || 'Sem título'}
+                          </span>
+                          <span className="text-[11px] text-zinc-400 block">
+                            {startDate
+                              ? `${startDate.toLocaleDateString('pt-BR')} às ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                              : 'Dia inteiro'}
+                          </span>
+                        </div>
+                        {evt.htmlLink && (
+                          <a
+                            href={evt.htmlLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg bg-zinc-800 hover:bg-blue-600 hover:text-white text-zinc-300 transition-colors flex-shrink-0"
+                            title="Abrir no Google Calendar"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {/* Transactional Email & SMTP Configuration */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-md space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">

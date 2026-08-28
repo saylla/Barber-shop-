@@ -4,13 +4,16 @@ import { Header } from './components/layout/Header';
 import { HeroSection } from './components/landing/HeroSection';
 import { ServicesSection } from './components/landing/ServicesSection';
 import { ProfessionalsSection } from './components/landing/ProfessionalsSection';
+import { PackagesAndProductsSection } from './components/landing/PackagesAndProductsSection';
 import { ReviewsSection } from './components/landing/ReviewsSection';
 import { LocationSection } from './components/landing/LocationSection';
 import { Footer } from './components/layout/Footer';
 import { MyBookingsModal } from './components/customer/MyBookingsModal';
 import { AdminLayout } from './components/admin/AdminLayout';
+import { BarberLayout } from './components/barber/BarberLayout';
 import { ToastContainer } from './components/common/Toast';
 import { GlobalModals } from './components/common/GlobalModals';
+import { FloatingChat } from './components/chat/FloatingChat';
 import { Shield, Sparkles, UserCheck } from 'lucide-react';
 
 const MainAppContent: React.FC = () => {
@@ -19,6 +22,7 @@ const MainAppContent: React.FC = () => {
     isAdminAuthenticated,
     openSocialLoginModal,
     setActiveView,
+    currentUser,
   } = useApp();
 
   const [isMyBookingsOpen, setIsMyBookingsOpen] = useState(false);
@@ -26,6 +30,10 @@ const MainAppContent: React.FC = () => {
   // If in Admin View and Authenticated, render the Admin Layout
   if (activeView === 'admin') {
     if (isAdminAuthenticated) {
+      if (currentUser?.role === 'barber') {
+        setTimeout(() => setActiveView('barber'), 0);
+        return null;
+      }
       return (
         <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
           <AdminLayout />
@@ -77,6 +85,22 @@ const MainAppContent: React.FC = () => {
     }
   }
 
+  // If in Barber View and Authenticated
+  if (activeView === 'barber') {
+    if (isAdminAuthenticated) {
+      return (
+        <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-500 selection:text-black">
+          <BarberLayout />
+          <GlobalModals />
+          <ToastContainer />
+        </div>
+      );
+    } else {
+      setActiveView('client');
+      return null;
+    }
+  }
+
   // Otherwise, render Public Client Web Application
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-500 selection:text-black relative overflow-x-hidden">
@@ -92,6 +116,7 @@ const MainAppContent: React.FC = () => {
         <HeroSection />
         <ServicesSection />
         <ProfessionalsSection />
+        <PackagesAndProductsSection />
         <ReviewsSection />
         <LocationSection />
       </main>
@@ -101,6 +126,7 @@ const MainAppContent: React.FC = () => {
 
       {/* Modals & Portals */}
       <GlobalModals />
+      <FloatingChat />
       <MyBookingsModal
         isOpen={isMyBookingsOpen}
         onClose={() => setIsMyBookingsOpen(false)}

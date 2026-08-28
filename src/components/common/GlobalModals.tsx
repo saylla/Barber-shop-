@@ -6,6 +6,9 @@ import { CustomerMessageModal } from '../admin/CustomerMessageModal';
 import { EmailNotificationModal } from './EmailNotificationModal';
 import { RescheduleModal } from '../admin/RescheduleModal';
 import { DeclineAppointmentModal } from '../admin/DeclineAppointmentModal';
+import { QrCodeModal } from './QrCodeModal';
+import { ChangePasswordModal } from './ChangePasswordModal';
+import { CompleteProfileModal } from './CompleteProfileModal';
 
 export const GlobalModals: React.FC = () => {
   const {
@@ -15,6 +18,7 @@ export const GlobalModals: React.FC = () => {
     businessHours,
     blockedTimes,
     settings,
+    currentUser,
     isMessageModalOpen,
     selectedApptForMessage,
     messageModalInitialTemplate,
@@ -33,6 +37,14 @@ export const GlobalModals: React.FC = () => {
     rescheduleAppointment,
     sendCustomerMessage,
     sendEmailNotification,
+    isQrCodeModalOpen,
+    closeQrCodeModal,
+    isChangePasswordModalOpen,
+    closeChangePasswordModal,
+    changeCurrentUserPassword,
+    isCompleteProfileModalOpen,
+    closeCompleteProfileModal,
+    completeUserProfile,
   } = useApp();
 
   // Find target service & professional for selected appointments
@@ -55,8 +67,32 @@ export const GlobalModals: React.FC = () => {
       {/* Client Booking Flow Modal */}
       <BookingModal />
 
-      {/* Social Login Modal */}
+      {/* Social & Admin Login Modal */}
       <SocialLoginModal />
+
+      {/* QR Code Balcão & Mesa Modal */}
+      <QrCodeModal
+        isOpen={isQrCodeModalOpen}
+        onClose={closeQrCodeModal}
+      />
+
+      {/* Mandatory Change Password on First Login Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onSuccess={(newPass) => changeCurrentUserPassword(newPass)}
+        userEmail={currentUser?.email}
+        userName={currentUser?.name}
+      />
+
+      {/* Complete Profile (Name, Email, Phone) Modal */}
+      <CompleteProfileModal
+        isOpen={isCompleteProfileModalOpen}
+        onClose={closeCompleteProfileModal}
+        onSuccess={(name, email, phone) => completeUserProfile(name, email, phone)}
+        initialName={currentUser?.name}
+        initialEmail={currentUser?.email}
+        initialPhone={currentUser?.phone}
+      />
 
       {/* Admin Manual Messaging / WhatsApp Modal */}
       <CustomerMessageModal

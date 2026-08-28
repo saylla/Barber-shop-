@@ -1,9 +1,9 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { Scissors, Shield, Heart, Instagram, MessageSquare } from 'lucide-react';
+import { Scissors, Shield, QrCode, UserCheck } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { settings, setActiveView, openSocialLoginModal, isAdminAuthenticated } = useApp();
+  const { settings, setActiveView, openSocialLoginModal, openQrCodeModal, isAdminAuthenticated } = useApp();
 
   return (
     <footer id="main-footer" className="bg-zinc-950 border-t border-zinc-900 text-zinc-400 text-xs">
@@ -57,8 +57,18 @@ export const Footer: React.FC = () => {
 
           {/* Admin & Security */}
           <div className="space-y-2.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Gerenciamento</h4>
-            <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">Acesso do Salão</h4>
+            <div className="space-y-2.5">
+              <button
+                id="footer-qrcode-btn"
+                type="button"
+                onClick={openQrCodeModal}
+                className="w-full py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+              >
+                <QrCode className="w-3.5 h-3.5 text-amber-400" />
+                <span>Exibir QR Code de Balcão</span>
+              </button>
+
               <button
                 id="footer-admin-btn"
                 onClick={() => {
@@ -71,10 +81,10 @@ export const Footer: React.FC = () => {
                 className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:underline"
               >
                 <Shield className="w-3.5 h-3.5" />
-                <span>Painel do Proprietário / Admin</span>
+                <span>Painel dos Barbeiros / Gestor T.I.</span>
               </button>
               <p className="text-[11px] text-zinc-500">
-                Acesso seguro protegido por autenticação para gestão de horários e clientes.
+                Acesso individualizado com login por barbeiro e permissões de Super Admin T.I.
               </p>
             </div>
           </div>
@@ -88,7 +98,7 @@ export const Footer: React.FC = () => {
           <div className="flex items-center gap-1">
             <span>BarberFlow Engine</span>
             <span className="text-amber-400">✦</span>
-            <span>Versão 2.4 Pro</span>
+            <span>Versão 2.5 Multi-Barber Pro</span>
           </div>
         </div>
       </div>

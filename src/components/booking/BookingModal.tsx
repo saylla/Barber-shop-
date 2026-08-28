@@ -42,6 +42,8 @@ import {
   Copy,
   Check,
   Smartphone,
+  Bell,
+  BellRing,
 } from 'lucide-react';
 
 export const BookingModal: React.FC = () => {
@@ -60,6 +62,12 @@ export const BookingModal: React.FC = () => {
     openSocialLoginModal,
     openEmailModal,
     showToast,
+    googleCalendarSyncState,
+    syncAppointmentToGoogleCalendar,
+    notifyClientBookingConfirmed,
+    pushPermissionStatus,
+    requestPushPermission,
+    sendClientHaircutReminder,
   } = useApp();
 
   // Wizard Steps: 1: Service, 2: Barber, 3: Date & Time, 4: Identification & Review, 5: Success
@@ -84,8 +92,10 @@ export const BookingModal: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Result state
+  // Result state & Google Calendar API state
   const [confirmedAppointment, setConfirmedAppointment] = useState<any>(null);
+  const [isSyncingGCal, setIsSyncingGCal] = useState(false);
+  const [gcalEventLink, setGcalEventLink] = useState<string | null>(null);
 
   // Synchronize initial service selection if opened with one
   useEffect(() => {
@@ -233,6 +243,9 @@ export const BookingModal: React.FC = () => {
         setConfirmedAppointment(res.appointment);
         setStep(5);
 
+        // Dispatch Native Push Notification for Confirmation
+        notifyClientBookingConfirmed(res.appointment.id);
+
         // Trigger confetti celebration
         try {
           confetti({
@@ -268,6 +281,21 @@ export const BookingModal: React.FC = () => {
     const cleanPhone = phoneToUse.replace(/\D/g, '');
     const url = `https://api.whatsapp.com/send?phone=${cleanPhone.length >= 10 ? cleanPhone : settings.whatsapp}&text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
+  };
+
+  const handleDirectGoogleCalendarSync = async () => {
+    if (!confirmedAppointment) return;
+    setIsSyncingGCal(true);
+    try {
+      const res = await syncAppointmentToGoogleCalendar(confirmedAppointment.id);
+      if (res.success && res.htmlLink) {
+        setGcalEventLink(res.htmlLink);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Falha ao sincronizar com Google Calendar', 'error');
+    } finally {
+      setIsSyncingGCal(false);
+    }
   };
 
   const handleAddToGoogleCalendar = () => {
@@ -721,186 +749,156 @@ export const BookingModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Social Login Quick Action */}
+              {/* Authentication & Form inputs */}
               {!currentUser ? (
-                <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-amber-400" />
-                        <span>Preenchimento Rápido com Social Login</span>
-                      </h4>
-                      <p className="text-xs text-zinc-400">
-                        Conecte seu Google ou Facebook para agendar em 1 clique
-                      </p>
-                    </div>
+                <div className="bg-zinc-900/60 border border-amber-500/50 rounded-2xl p-6 text-center space-y-4 shadow-lg shadow-amber-500/5">
+                  <div className="w-12 h-12 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mx-auto">
+                    <User className="w-6 h-6" />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      id="step4-google-login-btn"
-                      type="button"
-                      onClick={() => openSocialLoginModal()}
-                      className="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-medium text-white flex items-center justify-center gap-2 border border-zinc-700 transition-colors"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
-                        <path
-                          fill="#EA4335"
-                          d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.9C6.2 7.4 8.9 5 12 5z"
-                        />
-                        <path
-                          fill="#4285F4"
-                          d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.3 14.7c-.2-.7-.4-1.5-.4-2.7s.1-2 .4-2.7L1.6 6.4C.6 8.3 0 10.1 0 12s.6 3.7 1.6 5.6l3.7-2.9z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.4-6.7-5.3L1.6 16c1.9 3.8 5.8 7 10.4 7z"
-                        />
-                      </svg>
-                      <span>Google</span>
-                    </button>
-                    <button
-                      id="step4-fb-login-btn"
-                      type="button"
-                      onClick={() => openSocialLoginModal()}
-                      className="py-2.5 px-3 bg-[#1877F2] hover:bg-[#166fe5] rounded-xl text-xs font-medium text-white flex items-center justify-center gap-2 transition-colors"
-                    >
-                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                      </svg>
-                      <span>Facebook</span>
-                    </button>
+                  <div>
+                    <h4 className="text-base font-bold text-white">
+                      Identificação Obrigatória
+                    </h4>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Para confirmar seu agendamento e evitar falsas reservas, por favor faça login ou um rápido cadastro.
+                    </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => openSocialLoginModal()}
+                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-wider rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Entrar / Cadastrar para Agendar</span>
+                  </button>
                 </div>
               ) : (
-                <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={currentUser.avatar}
-                      alt={currentUser.name}
-                      className="w-10 h-10 rounded-full object-cover border border-amber-500"
-                    />
-                    <div>
-                      <div className="text-xs text-amber-400 font-bold uppercase tracking-wider">
-                        Logado via {currentUser.provider}
+                <>
+                  <div className="p-3 bg-zinc-900 border border-emerald-500/30 rounded-xl flex items-center justify-between shadow-inner">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={currentUser.avatar}
+                        alt={currentUser.name}
+                        className="w-10 h-10 rounded-full object-cover border border-emerald-500"
+                      />
+                      <div>
+                        <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                          Logado via {currentUser.provider}
+                        </div>
+                        <div className="text-sm font-bold text-white">{currentUser.name}</div>
                       </div>
-                      <div className="text-sm font-bold text-white">{currentUser.name}</div>
+                    </div>
+                    <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-bold bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Pronto
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Nome Completo *</span>
+                      </label>
+                      <input
+                        id="client-name-input"
+                        type="text"
+                        required
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Ex: João Silva"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>WhatsApp / Telefone *</span>
+                        </label>
+                        <input
+                          id="client-phone-input"
+                          type="tel"
+                          required
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                          placeholder="(11) 98765-4321"
+                          className={`w-full bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors ${
+                            customerPhone && !isPhoneValid
+                              ? 'border-red-500 focus:border-red-500'
+                              : 'border-zinc-800 focus:border-amber-500'
+                          }`}
+                        />
+                        {customerPhone && !isPhoneValid && (
+                          <p className="text-red-400 text-[10px] mt-1.5 font-medium ml-1">
+                            Formato inválido. Insira DDD + Número.
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>E-mail (opcional)</span>
+                        </label>
+                        <input
+                          id="client-email-input"
+                          type="email"
+                          value={customerEmail}
+                          onChange={(e) => setCustomerEmail(e.target.value)}
+                          placeholder="joao@email.com"
+                          className={`w-full bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors ${
+                            customerEmail && !isEmailValid
+                              ? 'border-red-500 focus:border-red-500'
+                              : 'border-zinc-800 focus:border-amber-500'
+                          }`}
+                        />
+                        {customerEmail && !isEmailValid && (
+                          <p className="text-red-400 text-[10px] mt-1.5 font-medium ml-1">
+                            E-mail inválido. Verifique a formatação.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        Observações ou Preferências (opcional)
+                      </label>
+                      <input
+                        id="client-notes-input"
+                        type="text"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Ex: Cabelo fino, prefiro toalha morna..."
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                      />
                     </div>
                   </div>
-                  <span className="text-xs text-emerald-400 flex items-center gap-1 font-medium">
-                    <CheckCircle2 className="w-4 h-4" /> Pronto
-                  </span>
-                </div>
+
+                  {/* Confirm Booking Button */}
+                  <div className="pt-3">
+                    <button
+                      id="submit-confirm-booking-btn"
+                      type="button"
+                      disabled={isSubmitting || !isFormValid}
+                      onClick={handleConfirmBooking}
+                      className="w-full py-4 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-wider rounded-xl text-sm transition-all shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500 disabled:shadow-none"
+                    >
+                      {isSubmitting ? (
+                        <span>Processando reserva...</span>
+                      ) : !isFormValid ? (
+                        <span>Verifique os seus dados</span>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-5 h-5" />
+                          <span>Confirmar Agendamento</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
               )}
-
-              {/* Form inputs */}
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Nome Completo *</span>
-                  </label>
-                  <input
-                    id="client-name-input"
-                    type="text"
-                    required
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Ex: João Silva"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>WhatsApp / Telefone *</span>
-                    </label>
-                    <input
-                      id="client-phone-input"
-                      type="tel"
-                      required
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="(11) 98765-4321"
-                      className={`w-full bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors ${
-                        customerPhone && !isPhoneValid
-                          ? 'border-red-500 focus:border-red-500'
-                          : 'border-zinc-800 focus:border-amber-500'
-                      }`}
-                    />
-                    {customerPhone && !isPhoneValid && (
-                      <p className="text-red-400 text-[10px] mt-1.5 font-medium ml-1">
-                        Formato inválido. Insira DDD + Número.
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>E-mail (opcional)</span>
-                    </label>
-                    <input
-                      id="client-email-input"
-                      type="email"
-                      value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
-                      placeholder="joao@email.com"
-                      className={`w-full bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none transition-colors ${
-                        customerEmail && !isEmailValid
-                          ? 'border-red-500 focus:border-red-500'
-                          : 'border-zinc-800 focus:border-amber-500'
-                      }`}
-                    />
-                    {customerEmail && !isEmailValid && (
-                      <p className="text-red-400 text-[10px] mt-1.5 font-medium ml-1">
-                        E-mail inválido. Verifique a formatação.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Observações ou Preferências (opcional)
-                  </label>
-                  <input
-                    id="client-notes-input"
-                    type="text"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Ex: Cabelo fino, prefiro toalha morna..."
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              {/* Confirm Booking Button */}
-              <div className="pt-2">
-                <button
-                  id="submit-confirm-booking-btn"
-                  type="button"
-                  disabled={isSubmitting || !isFormValid}
-                  onClick={handleConfirmBooking}
-                  className="w-full py-4 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-wider rounded-xl text-sm transition-all shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500 disabled:shadow-none"
-                >
-                  {isSubmitting ? (
-                    <span>Processando reserva...</span>
-                  ) : !isFormValid ? (
-                    <span>Preencha os dados</span>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-5 h-5" />
-                      <span>Confirmar Agendamento</span>
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
           )}
 
@@ -966,6 +964,53 @@ export const BookingModal: React.FC = () => {
 
               {/* Interactive Voucher Dispatch Options */}
               <div className="max-w-md mx-auto space-y-3 text-left">
+                {/* Push Notification Native Card */}
+                <div className="p-4 bg-zinc-900 border border-amber-500/30 rounded-2xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <BellRing className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                      <span>Notificação Push no Celular</span>
+                    </span>
+                    {pushPermissionStatus === 'granted' ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
+                        ✓ Ativadas
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                        Pendente
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {pushPermissionStatus === 'granted'
+                      ? 'Lembretes automáticos nativos via Service Worker estão ativos! Você receberá aviso 1 hora antes do atendimento.'
+                      : 'Ative os avisos nativos no seu navegador ou celular para ser lembrado 1h antes do seu corte.'}
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    {pushPermissionStatus !== 'granted' ? (
+                      <button
+                        type="button"
+                        id="step5-enable-push-btn"
+                        onClick={requestPushPermission}
+                        className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-md"
+                      >
+                        <Bell className="w-3.5 h-3.5" />
+                        <span>Ativar Lembretes no Celular</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        id="step5-test-push-btn"
+                        onClick={() => sendClientHaircutReminder(confirmedAppointment.id, '1_hour_before')}
+                        className="flex-1 py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Testar Notificação Push</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* WhatsApp & SMS Card */}
                 <div className="p-4 bg-zinc-900 border border-emerald-500/20 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
@@ -1146,6 +1191,60 @@ export const BookingModal: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Google Calendar Direct Sync Card */}
+                <div className="p-4 bg-zinc-900 border border-blue-500/30 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                      <span>Sincronizar com Google Agenda</span>
+                    </span>
+                    {googleCalendarSyncState.isConnected && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-medium">
+                        {googleCalendarSyncState.userEmail}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-zinc-400">
+                    Insira este agendamento diretamente na sua conta Google com lembretes automáticos para não perder o horário.
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button
+                      id="step5-gcal-sync-api-btn"
+                      onClick={handleDirectGoogleCalendarSync}
+                      disabled={isSyncingGCal}
+                      className={`flex-1 py-2.5 px-3 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-md ${
+                        gcalEventLink || confirmedAppointment?.googleCalendarSynced
+                          ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-blue-600 hover:bg-blue-500 text-white'
+                      }`}
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                      <span>
+                        {isSyncingGCal
+                          ? 'Sincronizando...'
+                          : gcalEventLink || confirmedAppointment?.googleCalendarSynced
+                          ? '✓ Sincronizado no Google Agenda'
+                          : 'Conectar & Salvar no Google Agenda'}
+                      </span>
+                    </button>
+
+                    {gcalEventLink && (
+                      <a
+                        id="step5-gcal-open-event-link"
+                        href={gcalEventLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold rounded-xl border border-zinc-700 flex items-center justify-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3 text-blue-400" />
+                        <span>Abrir Evento</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
                 {/* Voucher Modal Button */}
                 <button
                   id="success-email-voucher-btn"
@@ -1162,9 +1261,10 @@ export const BookingModal: React.FC = () => {
                   id="success-gcal-btn"
                   onClick={handleAddToGoogleCalendar}
                   className="text-xs text-zinc-400 hover:text-amber-400 font-semibold transition-colors flex items-center gap-1.5"
+                  title="Abrir no navegador para adicionar manualmente"
                 >
-                  <CalendarPlus className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Adicionar ao Google Agenda</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Abrir via link web do Google</span>
                 </button>
 
                 <span className="text-zinc-600">•</span>
@@ -1174,7 +1274,7 @@ export const BookingModal: React.FC = () => {
                   onClick={handleDownloadIcs}
                   className="text-xs text-zinc-400 hover:text-amber-400 transition-colors"
                 >
-                  Baixar .ICS
+                  Baixar arquivo .ICS
                 </button>
               </div>
 

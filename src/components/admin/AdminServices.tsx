@@ -5,7 +5,10 @@ import { formatCurrency } from '../../utils/calendarUtils';
 import { Plus, Edit2, Trash2, Clock, Check, X, Scissors, Image as ImageIcon } from 'lucide-react';
 
 export const AdminServices: React.FC = () => {
-  const { services, createService, updateService, deleteService } = useApp();
+  const { services, createService, updateService, deleteService, currentUser, professionals } = useApp();
+
+  const isBarber = currentUser?.role === 'barber';
+  const myProfId = currentUser?.professionalId;
 
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -19,6 +22,7 @@ export const AdminServices: React.FC = () => {
   const [category, setCategory] = useState<ServiceCategory>('corte');
   const [image, setImage] = useState('');
   const [active, setActive] = useState(true);
+  const [barberId, setBarberId] = useState<string>('all');
 
   const openCreateModal = () => {
     setName('');
@@ -28,6 +32,7 @@ export const AdminServices: React.FC = () => {
     setCategory('corte');
     setImage('https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=600&q=80');
     setActive(true);
+    setBarberId(isBarber && myProfId ? myProfId : 'all');
     setEditingService(null);
     setIsCreating(true);
   };
@@ -41,7 +46,19 @@ export const AdminServices: React.FC = () => {
     setCategory(s.category);
     setImage(s.image);
     setActive(s.active);
+    setBarberId(s.barberId || 'all');
     setIsCreating(false);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -58,6 +75,7 @@ export const AdminServices: React.FC = () => {
         category,
         image: image.trim() || 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=600&q=80',
         active,
+        barberId: barberId,
       });
       setEditingService(null);
     } else {
@@ -69,10 +87,18 @@ export const AdminServices: React.FC = () => {
         category,
         image: image.trim() || 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=600&q=80',
         active,
+        barberId: barberId,
       });
       setIsCreating(false);
     }
   };
+
+  const visibleServices = services.filter((s) => {
+    if (isBarber && myProfId) {
+      return s.barberId === myProfId || s.barberId === 'all' || !s.barberId;
+    }
+    return true;
+  });
 
   return (
     <div id="admin-services-view" className="space-y-6">
@@ -102,7 +128,7 @@ export const AdminServices: React.FC = () => {
 
       {/* Services Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {services.map((service) => (
+        {visibleServices.map((service) => (
           <div
             key={service.id}
             id={`admin-service-${service.id}`}
@@ -312,17 +338,46 @@ export const AdminServices: React.FC = () => {
                 </div>
               </div>
 
+              {!isBarber && (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                    Atribuir a Profissional
+                  </label>
+                  <select
+                    value={barberId}
+                    onChange={(e) => setBarberId(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="all">Todos os Profissionais (Serviço Global)</option>
+                    {professionals.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} - {p.specialty}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  URL da Imagem / Foto
+                  Imagem / Foto do Serviço
                 </label>
-                <input
-                  type="url"
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500"
-                />
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="url"
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    placeholder="URL ou faça upload..."
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500"
+                  />
+                  <label className="cursor-pointer bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors">
+                    Upload
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="pt-4 border-t border-zinc-800 flex gap-3">

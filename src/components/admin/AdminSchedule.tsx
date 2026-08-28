@@ -31,6 +31,9 @@ import {
   Sparkles,
   RotateCcw,
   BadgeCheck,
+  CalendarPlus,
+  ExternalLink,
+  Bell,
 } from 'lucide-react';
 import { ManualAppointmentModal } from './ManualAppointmentModal';
 
@@ -47,6 +50,12 @@ export const AdminSchedule: React.FC = () => {
     openRescheduleModal,
     openDeclineModal,
     settings,
+    googleCalendarSyncState,
+    connectGoogleCalendar,
+    syncAppointmentToGoogleCalendar,
+    syncAllAppointmentsToGoogleCalendar,
+    deleteGoogleCalendarEventForAppt,
+    sendClientHaircutReminder,
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'all'>('day');
@@ -56,6 +65,9 @@ export const AdminSchedule: React.FC = () => {
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
+  const [syncingApptId, setSyncingApptId] = useState<string | null>(null);
+  const [deleteGCalConfirmId, setDeleteGCalConfirmId] = useState<string | null>(null);
+  const [activeReminderApptId, setActiveReminderApptId] = useState<string | null>(null);
 
   // Date Navigation Helpers
   const shiftDate = (days: number) => {
@@ -215,6 +227,64 @@ export const AdminSchedule: React.FC = () => {
               <Plus className="w-4 h-4" />
               <span>Novo Agendamento</span>
             </button>
+          </div>
+        </div>
+
+        {/* Google Calendar Sync Bar */}
+        <div className="bg-zinc-950/70 border border-zinc-800/80 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`p-2.5 rounded-xl border ${
+                googleCalendarSyncState.isConnected
+                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                  : 'bg-zinc-850 border-zinc-750 text-zinc-400'
+              }`}
+            >
+              <CalendarIcon className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-white">Google Agenda (Google Calendar)</span>
+                {googleCalendarSyncState.isConnected ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    Conectado: {googleCalendarSyncState.userEmail}
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    Não conectado
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Sincronize agendamentos automaticamente com sua conta Google Calendar para receber lembretes e alertas em tempo real.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {googleCalendarSyncState.isConnected ? (
+              <button
+                type="button"
+                id="schedule-sync-all-gcal-btn"
+                onClick={() => syncAllAppointmentsToGoogleCalendar()}
+                disabled={googleCalendarSyncState.isSyncing}
+                className="py-2 px-3.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-md"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${googleCalendarSyncState.isSyncing ? 'animate-spin' : ''}`} />
+                <span>{googleCalendarSyncState.isSyncing ? 'Sincronizando...' : 'Sincronizar Todos'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                id="schedule-connect-gcal-btn"
+                onClick={() => connectGoogleCalendar()}
+                className="py-2 px-3.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5"
+              >
+                <CalendarIcon className="w-3.5 h-3.5 text-blue-400" />
+                <span>Conectar Google Calendar</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -572,8 +642,76 @@ export const AdminSchedule: React.FC = () => {
                       </p>
                     )}
 
-                    {/* Notifications Status Indicators */}
+                    {/* Notifications & Sync Status Indicators */}
                     <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {/* Google Calendar sync status badge */}
+                      {appt.googleCalendarSynced ? (
+                        <div className="inline-flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-md text-[10px] text-blue-300 font-semibold">
+                          <CalendarIcon className="w-3 h-3 text-blue-400" />
+                          <span>Google Agenda</span>
+                          {appt.googleCalendarHtmlLink && (
+                            <a
+                              href={appt.googleCalendarHtmlLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-400 hover:text-white ml-0.5"
+                              title="Abrir no Google Agenda"
+                            >
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                          {deleteGCalConfirmId === appt.id ? (
+                            <span className="flex items-center gap-1 ml-1 text-red-300 bg-red-950/80 px-1.5 py-0.2 rounded border border-red-800">
+                              Remover?
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  deleteGoogleCalendarEventForAppt(appt.id);
+                                  setDeleteGCalConfirmId(null);
+                                }}
+                                className="text-red-400 hover:text-white font-bold underline ml-0.5"
+                              >
+                                Sim
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteGCalConfirmId(null)}
+                                className="text-zinc-400 hover:text-white ml-0.5"
+                              >
+                                Não
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteGCalConfirmId(appt.id)}
+                              className="text-zinc-500 hover:text-red-400 ml-1 transition-colors text-xs font-bold"
+                              title="Remover evento do Google Calendar"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSyncingApptId(appt.id);
+                            try {
+                              await syncAppointmentToGoogleCalendar(appt.id);
+                            } finally {
+                              setSyncingApptId(null);
+                            }
+                          }}
+                          disabled={syncingApptId === appt.id}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-400 hover:text-blue-300 bg-zinc-950 px-2 py-0.5 rounded-md border border-zinc-800 hover:border-blue-500/40 transition-colors"
+                          title="Sincronizar este agendamento no Google Calendar"
+                        >
+                          <CalendarPlus className="w-3 h-3 text-blue-400" />
+                          <span>{syncingApptId === appt.id ? 'Sincronizando...' : 'Salvar no Google Agenda'}</span>
+                        </button>
+                      )}
+
                       {appt.emailNotificationSent && (
                         <button
                           type="button"
@@ -678,6 +816,83 @@ export const AdminSchedule: React.FC = () => {
                   ) : (
                     /* Confirmed & Active Actions */
                     <div className="flex flex-wrap items-center gap-2 w-full justify-end">
+                      {/* Haircut Push Reminder Trigger */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          id={`push-reminder-btn-${appt.id}`}
+                          onClick={() => setActiveReminderApptId(activeReminderApptId === appt.id ? null : appt.id)}
+                          className="py-2 px-3 bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                          title="Disparar Lembrete Push nativo para o cliente"
+                        >
+                          <Bell className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Lembrete Push</span>
+                        </button>
+
+                        {activeReminderApptId === appt.id && (
+                          <div className="absolute right-0 top-full mt-2 w-56 bg-zinc-950 border border-amber-500/40 rounded-2xl p-2 shadow-2xl z-30 space-y-1">
+                            <div className="px-2 py-1 border-b border-zinc-800 text-[10px] uppercase font-bold tracking-wider text-amber-400">
+                              Enviar Notificação Push:
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sendClientHaircutReminder(appt.id, '1_hour_before');
+                                setActiveReminderApptId(null);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-xs text-zinc-200 hover:text-white flex items-center gap-2"
+                            >
+                              <span>⏰</span>
+                              <span>Faltam 60 Minutos</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sendClientHaircutReminder(appt.id, 'today');
+                                setActiveReminderApptId(null);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-xs text-zinc-200 hover:text-white flex items-center gap-2"
+                            >
+                              <span>💈</span>
+                              <span>Seu corte é hoje!</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sendClientHaircutReminder(appt.id, 'tomorrow');
+                                setActiveReminderApptId(null);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-xs text-zinc-200 hover:text-white flex items-center gap-2"
+                            >
+                              <span>🗓️</span>
+                              <span>Lembrete de Véspera</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sendClientHaircutReminder(appt.id, 'maintenance_15d');
+                                setActiveReminderApptId(null);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-xs text-zinc-200 hover:text-white flex items-center gap-2"
+                            >
+                              <span>✂️</span>
+                              <span>Retorno (15 dias)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sendClientHaircutReminder(appt.id, 'maintenance_30d');
+                                setActiveReminderApptId(null);
+                              }}
+                              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-xs text-zinc-200 hover:text-white flex items-center gap-2"
+                            >
+                              <span>💈</span>
+                              <span>Renovar Estilo (30 dias)</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Barber manual message editor */}
                       <button
                         type="button"

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatDateBR, formatCurrency, generateBookingWhatsAppMessage, generateGoogleCalendarUrl } from '../../utils/calendarUtils';
-import { Calendar, Clock, Scissors, User, X, Search, AlertCircle, Share2, CalendarPlus, XCircle, Mail, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, Scissors, User, X, Search, AlertCircle, Share2, CalendarPlus, XCircle, Mail, RefreshCw, Bell, BellRing, Check } from 'lucide-react';
 
 interface MyBookingsModalProps {
   isOpen: boolean;
@@ -9,7 +9,19 @@ interface MyBookingsModalProps {
 }
 
 export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClose }) => {
-  const { appointments, services, professionals, settings, currentUser, cancelAppointment, openEmailModal, openRescheduleModal } = useApp();
+  const {
+    appointments,
+    services,
+    professionals,
+    settings,
+    currentUser,
+    cancelAppointment,
+    openEmailModal,
+    openRescheduleModal,
+    pushPermissionStatus,
+    requestPushPermission,
+    sendClientHaircutReminder,
+  } = useApp();
   const [searchTerm, setSearchTerm] = useState(currentUser?.phone || currentUser?.email || '');
 
   if (!isOpen) return null;
@@ -64,8 +76,36 @@ export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClos
           </button>
         </div>
 
+        {/* Push Notification Status Card */}
+        <div className="py-2">
+          {pushPermissionStatus === 'granted' ? (
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
+              <div className="flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-emerald-400 animate-pulse" />
+                <span><strong>Notificações Push Nativas Ativas:</strong> Você receberá lembretes automáticos do seu corte.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span>Ative as notificações para receber avisos de confirmação e lembrete 1h antes do corte no celular!</span>
+              </div>
+              <button
+                type="button"
+                id="enable-client-push-btn"
+                onClick={requestPushPermission}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs whitespace-nowrap transition-colors flex items-center gap-1.5 shadow-md"
+              >
+                <BellRing className="w-3.5 h-3.5" />
+                <span>Ativar Notificações</span>
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Search input if not logged in or searching by code */}
-        <div className="py-4">
+        <div className="py-2">
           <div className="relative">
             <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" />
             <input
@@ -154,6 +194,16 @@ export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClos
                   {/* Actions */}
                   {!isCancelled && !isCompleted && (
                     <div className="pt-3 border-t border-zinc-800 flex flex-wrap gap-2 justify-end">
+                      <button
+                        id={`push-reminder-client-${appt.id}`}
+                        onClick={() => sendClientHaircutReminder(appt.id, '1_hour_before')}
+                        className="py-1.5 px-3 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                        title="Disparar lembrete Push de corte (notificação nativa)"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Lembrete Push</span>
+                      </button>
+
                       <button
                         id={`email-voucher-appt-${appt.id}`}
                         onClick={() => openEmailModal(appt)}

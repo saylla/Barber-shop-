@@ -231,7 +231,7 @@ class PushNotificationService {
     }
   }
 
-  // Trigger alert for a new appointment
+  // Trigger alert for a new appointment (to barbers/admins)
   async notifyNewAppointment(
     appointment: Appointment,
     serviceName: string,
@@ -261,6 +261,151 @@ class PushNotificationService {
         { action: 'dismiss', title: 'Dispensar' },
       ],
     });
+  }
+
+  // Trigger Client-Facing Push Notification when an Appointment is Confirmed
+  async notifyClientBookingConfirmed(
+    appointment: Appointment,
+    serviceName: string,
+    professionalName: string,
+    options?: { playSound?: boolean; vibration?: boolean }
+  ): Promise<boolean> {
+    const formattedDate = formatDateBR(appointment.date);
+    const title = `💈 Agendamento Confirmado! (#${appointment.code})`;
+    const body = `Olá, ${appointment.customerName}! Seu horário para ${serviceName} com ${professionalName} está confirmado para ${formattedDate} às ${appointment.time}. Te esperamos!`;
+
+    return this.dispatchPushNotification({
+      title,
+      body,
+      tag: `client-confirmed-${appointment.id}`,
+      soundType: 'booking',
+      playSound: options?.playSound !== false,
+      vibrate: options?.vibration !== false ? [200, 100, 200, 100, 300] : undefined,
+      requireInteraction: true,
+      data: {
+        type: 'client_booking_confirmed',
+        appointmentId: appointment.id,
+        code: appointment.code,
+        url: `/?view=my-bookings&code=${appointment.code}`,
+      },
+      actions: [
+        { action: 'open_my_bookings', title: '📋 Meus Agendamentos' },
+        { action: 'dismiss', title: 'Fechar' },
+      ],
+    });
+  }
+
+  // Trigger Client-Facing Push Notification for Haircut Reminders (Lembrete de Corte)
+  async notifyClientHaircutReminder(
+    appointment: Appointment,
+    serviceName: string,
+    professionalName: string,
+    reminderType: '1_hour_before' | 'today' | 'tomorrow' | 'maintenance_15d' | 'maintenance_30d' | 'custom',
+    customMessage?: string,
+    options?: { playSound?: boolean; vibration?: boolean }
+  ): Promise<boolean> {
+    const formattedDate = formatDateBR(appointment.date);
+    let title = `✂️ Lembrete de Corte BarberFlow`;
+    let body = `Seu corte está agendado para ${formattedDate} às ${appointment.time} com ${professionalName}.`;
+
+    if (reminderType === '1_hour_before') {
+      title = `⏰ Lembrete: Seu corte é em 1 hora!`;
+      body = `Olá, ${appointment.customerName}! Faltam 60 minutos para seu atendimento de ${serviceName} com ${professionalName} às ${appointment.time}.`;
+    } else if (reminderType === 'today') {
+      title = `💈 Seu corte é hoje! (${appointment.time})`;
+      body = `Hoje tem atendimento de ${serviceName} com ${professionalName} às ${appointment.time}. Te esperamos na BarberFlow!`;
+    } else if (reminderType === 'tomorrow') {
+      title = `🗓️ Lembrete: Corte amanhã às ${appointment.time}`;
+      body = `Amanhã você tem horário marcado para ${serviceName} com ${professionalName}. Código: #${appointment.code}.`;
+    } else if (reminderType === 'maintenance_15d') {
+      title = `✂️ Hora de Manter o Visual! (15 dias)`;
+      body = `Já faz 15 dias do seu último corte na BarberFlow. Que tal agendar a manutenção da barba ou corte?`;
+    } else if (reminderType === 'maintenance_30d') {
+      title = `💈 Renove seu Estilo (30 dias)`;
+      body = `Seu visual merece aquele talento! Já se passou 1 mês desde seu último atendimento. Reserve agora seu horário.`;
+    } else if (customMessage) {
+      body = customMessage;
+    }
+
+    return this.dispatchPushNotification({
+      title,
+      body,
+      tag: `haircut-reminder-${appointment.id}-${reminderType}`,
+      soundType: 'booking',
+      playSound: options?.playSound !== false,
+      vibrate: options?.vibration !== false ? [250, 100, 250] : undefined,
+      requireInteraction: true,
+      data: {
+        type: 'haircut_reminder',
+        appointmentId: appointment.id,
+        code: appointment.code,
+        url: reminderType.startsWith('maintenance') ? '/?view=booking' : `/?view=my-bookings&code=${appointment.code}`,
+      },
+      actions: [
+        { action: reminderType.startsWith('maintenance') ? 'book_again' : 'open_my_bookings', title: reminderType.startsWith('maintenance') ? '✂️ Agendar Agora' : '📋 Ver Agendamento' },
+        { action: 'dismiss', title: 'Fechar' },
+      ],
+    });
+  }
+
+  // Automatic Background Checker for Client Haircut Reminders
+  checkAndTriggerScheduledReminders(
+    appointments: Appointment[],
+    services: any[],
+    professionals: any[],
+    options?: { playSound?: boolean }
+  ) {
+    if (typeof window === 'undefined' || this.getPermissionStatus() !== 'granted') {
+      return;
+    }
+
+    try {
+      const sentRemindersKey = 'barberflow_sent_reminders';
+      const stored = localStorage.getItem(sentRemindersKey);
+      const sentMap: Record<string, number> = stored ? JSON.parse(stored) : {};
+
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+      appointments.forEach((appt) => {
+        if (appt.status === 'cancelled' || appt.status === 'declined' || appt.status === 'no_show') {
+          return;
+        }
+
+        const service = services.find((s) => s.id === appt.serviceId);
+        const barber = professionals.find((p) => p.id === appt.professionalId);
+        const serviceName = service?.name || 'Serviço';
+        const barberName = barber?.name || 'Barbeiro';
+
+        // 1. Check for TODAY's upcoming appointments
+        if (appt.date === todayStr) {
+          const [h, m] = appt.time.split(':').map(Number);
+          const apptMinutes = h * 60 + m;
+          const diffMinutes = apptMinutes - nowMinutes;
+
+          // 1.1 Trigger 1-hour before reminder (between 45 and 65 mins before)
+          if (diffMinutes > 0 && diffMinutes <= 65) {
+            const reminderKey = `1h_${appt.id}_${appt.date}`;
+            if (!sentMap[reminderKey]) {
+              sentMap[reminderKey] = Date.now();
+              this.notifyClientHaircutReminder(appt, serviceName, barberName, '1_hour_before', undefined, options);
+            }
+          }
+
+          // 1.2 Trigger Day-Of morning reminder
+          const dayKey = `today_${appt.id}_${appt.date}`;
+          if (!sentMap[dayKey] && diffMinutes > 65) {
+            sentMap[dayKey] = Date.now();
+            this.notifyClientHaircutReminder(appt, serviceName, barberName, 'today', undefined, options);
+          }
+        }
+      });
+
+      localStorage.setItem(sentRemindersKey, JSON.stringify(sentMap));
+    } catch (err) {
+      console.warn('Reminder check warning:', err);
+    }
   }
 
   // Trigger alert for an appointment status change
