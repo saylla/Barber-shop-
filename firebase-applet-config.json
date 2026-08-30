@@ -3,6 +3,7 @@
   "appId": "1:814120369880:web:4cc9962ca73146f31b21ad",
   "apiKey": "AIzaSyCCZ_SKsv3LyDM5W2ReB2cmnKDRRTN0ayI",
   "authDomain": "gen-lang-client-0210112768.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-barberflow-e4ecd3b6-0b31-44ef-bcba-7cf34814225f",
   "storageBucket": "gen-lang-client-0210112768.firebasestorage.app",
   "messagingSenderId": "814120369880",
   "measurementId": "",

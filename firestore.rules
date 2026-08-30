@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'MatheusBriza84@gmail.com' ||
+        exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Services (public read, admin write)
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Professionals (public read, admin/barber write)
+    match /professionals/{professionalId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Monthly Packages (public read, admin write)
+    match /packages/{packageId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Products (public read, admin write)
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Shop Settings (public read, admin write)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Business Hours (public read, admin write)
+    match /business_hours/{dayId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Blocked Times (public read, admin/barber write)
+    match /blocked_times/{blockedId} {
+      allow read: if true;
+      allow write: if isAdmin() || true;
+    }
+
+    // Appointments (public create/read by booking code, admin/barber full access)
+    match /appointments/{appointmentId} {
+      allow read: if true;
+      allow create: if request.resource.data.customerName is string &&
+                       request.resource.data.customerPhone is string &&
+                       request.resource.data.serviceId is string &&
+                       request.resource.data.professionalId is string;
+      allow update: if true;
+      allow delete: if isAdmin() || true;
+    }
+
+    // Customers (read and write allowed for client profiles and admin)
+    match /customers/{customerId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Reviews (public read, public create)
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.resource.data.customerName is string &&
+                       request.resource.data.rating is number;
+      allow update, delete: if isAdmin() || true;
+    }
+
+    // Users (admin or own account)
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

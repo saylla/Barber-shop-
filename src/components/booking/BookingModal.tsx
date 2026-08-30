@@ -44,7 +44,9 @@ import {
   Smartphone,
   Bell,
   BellRing,
+  QrCode,
 } from 'lucide-react';
+import { BookingTicketQrModal } from '../customer/BookingTicketQrModal';
 
 export const BookingModal: React.FC = () => {
   const {
@@ -96,6 +98,7 @@ export const BookingModal: React.FC = () => {
   const [confirmedAppointment, setConfirmedAppointment] = useState<any>(null);
   const [isSyncingGCal, setIsSyncingGCal] = useState(false);
   const [gcalEventLink, setGcalEventLink] = useState<string | null>(null);
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
 
   // Synchronize initial service selection if opened with one
   useEffect(() => {
@@ -1245,6 +1248,17 @@ export const BookingModal: React.FC = () => {
                   </div>
                 </div>
 
+                {/* QR Code Digital Ticket Button */}
+                <button
+                  type="button"
+                  id="success-qr-ticket-btn"
+                  onClick={() => setIsTicketModalOpen(true)}
+                  className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Ver QR Code / Ingresso Digital de Chegada</span>
+                </button>
+
                 {/* Voucher Modal Button */}
                 <button
                   id="success-email-voucher-btn"
@@ -1255,6 +1269,17 @@ export const BookingModal: React.FC = () => {
                   <span>Ver / Imprimir Voucher Completo</span>
                 </button>
               </div>
+
+              {/* Digital Ticket QR Code Modal */}
+              <BookingTicketQrModal
+                isOpen={isTicketModalOpen}
+                onClose={() => setIsTicketModalOpen(false)}
+                appointment={confirmedAppointment}
+                service={selectedService}
+                professional={barberForSlots}
+                settings={settings}
+                showToast={showToast}
+              />
 
               <div className="flex flex-wrap items-center justify-center gap-4 pt-1 max-w-md mx-auto">
                 <button

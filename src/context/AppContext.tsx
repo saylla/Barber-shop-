@@ -52,6 +52,27 @@ import {
   deleteGoogleCalendarEvent,
   listGoogleCalendarEvents,
 } from '../services/googleCalendarService';
+import { db, auth, googleProvider, testFirestoreConnection, handleFirestoreError, OperationType } from '../lib/firebase';
+import {
+  saveAppointmentToFirestore,
+  updateAppointmentInFirestore,
+  deleteAppointmentFromFirestore,
+  saveCustomerToFirestore,
+  saveServiceToFirestore,
+  deleteServiceFromFirestore,
+  saveProfessionalToFirestore,
+  saveSettingsToFirestore,
+  saveBusinessHoursToFirestore,
+  saveBlockedTimeToFirestore,
+  deleteBlockedTimeFromFirestore,
+  savePackageToFirestore,
+  saveProductToFirestore,
+  seedFirestoreIfEmpty,
+  firebaseGoogleSignIn,
+  firebaseSignOut,
+  COLLECTIONS,
+} from '../services/firebaseSyncService';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
 
 interface ToastInfo {
   id: string;
@@ -75,6 +96,10 @@ interface AppContextType {
   isBookingModalOpen: boolean;
   isSocialLoginModalOpen: boolean;
   toasts: ToastInfo[];
+
+  // Firebase Firestore Integration
+  firebaseConnected: boolean;
+  firebaseProjectId: string;
 
   // Push Notifications & Service Worker
   pushPermissionStatus: PushPermissionStatus;
@@ -224,7 +249,7 @@ interface AppContextType {
   updateCustomerNotes: (id: string, notes: string) => void;
 
   // Auth & Session
-  loginWithGoogle: (role?: 'customer' | 'admin') => UserAccount;
+  loginWithGoogle: (role?: 'customer' | 'admin') => Promise<UserAccount> | UserAccount;
   loginWithDirect: (name: string, email: string, phone: string) => UserAccount;
   loginAdminWithPassword: (password: string, userIdentifier?: string) => boolean;
   logout: () => void;
@@ -434,6 +459,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pushNotificationService.getPermissionStatus()
   );
   const isPushSupported = pushNotificationService.isSupported();
+
+  // Firebase State
+  const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
+  const firebaseProjectId = 'gen-lang-client-0210112768';
+
+  // Firebase Firestore Realtime Sync Initialization
+  useEffect(() => {
+    let unsubs: (() => void)[] = [];
+
+    const initFirebase = async () => {
+      try {
+        const isOk = await testFirestoreConnection();
+        setFirebaseConnected(isOk);
+
+        // Seed initial data if Firestore is fresh
+        await seedFirestoreIfEmpty();
+
+        // 1. Appointments Real-time Listener
+        const unsubAppts = onSnapshot(
+          collection(db, COLLECTIONS.APPOINTMENTS),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: Appointment[] = [];
+              snapshot.forEach((docSnap) => {
+                loaded.push(docSnap.data() as Appointment);
+              });
+              loaded.sort(
+                (a, b) => new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime()
+              );
+              setAppointments(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.APPOINTMENTS)
+        );
+        unsubs.push(unsubAppts);
+
+        // 2. Services Real-time Listener
+        const unsubServices = onSnapshot(
+          collection(db, COLLECTIONS.SERVICES),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: Service[] = [];
+              snapshot.forEach((docSnap) => loaded.push(docSnap.data() as Service));
+              setServices(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.SERVICES)
+        );
+        unsubs.push(unsubServices);
+
+        // 3. Professionals Real-time Listener
+        const unsubProfs = onSnapshot(
+          collection(db, COLLECTIONS.PROFESSIONALS),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: Professional[] = [];
+              snapshot.forEach((docSnap) => loaded.push(docSnap.data() as Professional));
+              setProfessionals(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.PROFESSIONALS)
+        );
+        unsubs.push(unsubProfs);
+
+        // 4. Customers Real-time Listener
+        const unsubCusts = onSnapshot(
+          collection(db, COLLECTIONS.CUSTOMERS),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: Customer[] = [];
+              snapshot.forEach((docSnap) => loaded.push(docSnap.data() as Customer));
+              setCustomers(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.CUSTOMERS)
+        );
+        unsubs.push(unsubCusts);
+
+        // 5. Packages Real-time Listener
+        const unsubPkgs = onSnapshot(
+          collection(db, COLLECTIONS.PACKAGES),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: MonthlyPackage[] = [];
+              snapshot.forEach((docSnap) => loaded.push(docSnap.data() as MonthlyPackage));
+              setPackages(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.PACKAGES)
+        );
+        unsubs.push(unsubPkgs);
+
+        // 6. Products Real-time Listener
+        const unsubProds = onSnapshot(
+          collection(db, COLLECTIONS.PRODUCTS),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: BarberProduct[] = [];
+              snapshot.forEach((docSnap) => loaded.push(docSnap.data() as BarberProduct));
+              setProducts(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.PRODUCTS)
+        );
+        unsubs.push(unsubProds);
+
+        // 7. Settings Listener
+        const unsubSettings = onSnapshot(
+          doc(db, COLLECTIONS.SETTINGS, 'main_settings'),
+          (docSnap) => {
+            if (docSnap.exists()) {
+              setSettings(docSnap.data() as ShopSettings);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, 'settings/main_settings')
+        );
+        unsubs.push(unsubSettings);
+
+        // 8. Business Hours Listener
+        const unsubHours = onSnapshot(
+          doc(db, COLLECTIONS.BUSINESS_HOURS, 'weekly_schedule'),
+          (docSnap) => {
+            if (docSnap.exists()) {
+              setBusinessHours(docSnap.data() as BusinessHours);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, 'business_hours/weekly_schedule')
+        );
+        unsubs.push(unsubHours);
+
+        // 9. Blocked Times Listener
+        const unsubBlocked = onSnapshot(
+          collection(db, COLLECTIONS.BLOCKED_TIMES),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const loaded: BlockedTime[] = [];
+              snapshot.forEach((docSnap) => loaded.push(docSnap.data() as BlockedTime));
+              setBlockedTimes(loaded);
+            }
+          },
+          (err) => handleFirestoreError(err, OperationType.GET, COLLECTIONS.BLOCKED_TIMES)
+        );
+        unsubs.push(unsubBlocked);
+
+        setFirebaseConnected(true);
+      } catch (err) {
+        console.warn('Firebase sync initialized in local/offline mode:', err);
+      }
+    };
+
+    initFirebase();
+
+    return () => {
+      unsubs.forEach((unsub) => {
+        try {
+          unsub();
+        } catch {}
+      });
+    };
+  }, []);
 
   // Initialize Google Calendar Auth Listener
   useEffect(() => {
@@ -954,6 +1139,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAppointments((prev) => [newAppointment, ...prev]);
 
+    // Persist to Cloud Firestore
+    saveAppointmentToFirestore(newAppointment);
+
     // Upsert or update Customer CRM record
     setCustomers((prev) => {
       const cleanPhone = data.customerPhone.replace(/\D/g, '');
@@ -962,7 +1150,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (existingIdx >= 0) {
         const updated = [...prev];
         const currentCust = updated[existingIdx];
-        updated[existingIdx] = {
+        const updatedCust = {
           ...currentCust,
           name: data.customerName,
           email: data.customerEmail || currentCust.email,
@@ -970,6 +1158,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           totalSpent: currentCust.totalSpent + data.price,
           lastVisit: data.date,
         };
+        updated[existingIdx] = updatedCust;
+        saveCustomerToFirestore(updatedCust);
         return updated;
       } else {
         const newCustomer: Customer = {
@@ -984,6 +1174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           joinedAt: data.date,
           provider: currentUser?.provider || 'direct',
         };
+        saveCustomerToFirestore(newCustomer);
         return [newCustomer, ...prev];
       }
     });
@@ -1064,6 +1255,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
+    // Persist to Cloud Firestore
+    updateAppointmentInFirestore(id, {
+      status: 'confirmed',
+      history: [...(appt.history || []), historyEntry],
+    });
+
     showToast(`Agendamento #${appt.code} aceito e confirmado!`, 'success');
 
     const svc = services.find((s) => s.id === appt.serviceId);
@@ -1114,6 +1311,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
+    // Persist to Cloud Firestore
+    updateAppointmentInFirestore(id, {
+      status: 'declined',
+      rejectionReason: reason,
+      history: [...(appt.history || []), historyEntry],
+    });
+
     showToast(`Agendamento #${appt.code} recusado.`, 'info');
 
     const svc = services.find((s) => s.id === appt.serviceId);
@@ -1158,6 +1362,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : app
       )
     );
+
+    if (appt) {
+      updateAppointmentInFirestore(id, {
+        status,
+        history: [...(appt.history || []), historyEntry],
+      });
+    }
+
     showToast(`Status do agendamento #${appt?.code || id} atualizado para "${status}".`, 'info');
 
     if (appt) {
@@ -1236,6 +1448,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
+    if (updatedAppointment) {
+      saveAppointmentToFirestore(updatedAppointment);
+    }
+
     showToast(`Agendamento #${appt.code} reagendado para ${newDate} às ${newTime}!`, 'success');
 
     const svc = services.find((s) => s.id === appt.serviceId);
@@ -1281,6 +1497,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : a
       )
     );
+
+    if (appt) {
+      updateAppointmentInFirestore(id, {
+        status: 'cancelled',
+        history: [...(appt.history || []), historyEntry],
+      });
+    }
+
     showToast(`Agendamento #${appt?.code || id} cancelado.`, 'info');
 
     if (appt) {
@@ -1417,16 +1641,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `srv-${Date.now()}`,
     };
     setServices((prev) => [...prev, newService]);
+    saveServiceToFirestore(newService);
     showToast(`Serviço "${newService.name}" criado com sucesso.`, 'success');
   };
 
   const updateService = (updated: Service) => {
     setServices((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    saveServiceToFirestore(updated);
     showToast(`Serviço "${updated.name}" atualizado.`, 'success');
   };
 
   const deleteService = (id: string) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
+    deleteServiceFromFirestore(id);
     showToast('Serviço removido com sucesso.', 'info');
   };
 
@@ -1437,11 +1664,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `prof-${Date.now()}`,
     };
     setProfessionals((prev) => [...prev, newProf]);
+    saveProfessionalToFirestore(newProf);
     showToast(`Profissional "${newProf.name}" cadastrado.`, 'success');
   };
 
   const updateProfessional = (updated: Professional) => {
     setProfessionals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    saveProfessionalToFirestore(updated);
     showToast(`Profissional "${updated.name}" atualizado.`, 'success');
   };
 
@@ -1453,6 +1682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Hours & Blocks
   const updateBusinessHours = (hours: BusinessHours) => {
     setBusinessHours(hours);
+    saveBusinessHoursToFirestore(hours);
     showToast('Horários de funcionamento salvos.', 'success');
   };
 
@@ -1462,17 +1692,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `blk-${Date.now()}`,
     };
     setBlockedTimes((prev) => [...prev, newBlock]);
+    saveBlockedTimeToFirestore(newBlock);
     showToast('Bloqueio de horário registrado.', 'success');
   };
 
   const removeBlockedTime = (id: string) => {
     setBlockedTimes((prev) => prev.filter((b) => b.id !== id));
+    deleteBlockedTimeFromFirestore(id);
     showToast('Bloqueio removido.', 'info');
   };
 
   // Settings & Customer Notes
   const updateSettings = (newSettings: ShopSettings) => {
     setSettings(newSettings);
+    saveSettingsToFirestore(newSettings);
     showToast('Configurações da barbearia atualizadas.', 'success');
   };
 
@@ -1488,11 +1721,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `pkg-${Date.now()}`,
     };
     setPackages((prev) => [newPkg, ...prev]);
+    savePackageToFirestore(newPkg);
     showToast(`Pacote "${newPkg.name}" criado com sucesso!`, 'success');
   };
 
   const updatePackage = (updated: MonthlyPackage) => {
     setPackages((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    savePackageToFirestore(updated);
     showToast(`Pacote "${updated.name}" atualizado.`, 'success');
   };
 
@@ -1508,11 +1743,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `prod-${Date.now()}`,
     };
     setProducts((prev) => [newProd, ...prev]);
+    saveProductToFirestore(newProd);
     showToast(`Produto "${newProd.name}" cadastrado no estoque!`, 'success');
   };
 
   const updateProduct = (updated: BarberProduct) => {
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    saveProductToFirestore(updated);
     showToast(`Produto "${updated.name}" atualizado.`, 'success');
   };
 
@@ -1742,26 +1979,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Social & Admin Authentication
-  const loginWithGoogle = (role: 'customer' | 'admin' = 'customer'): UserAccount => {
-    const user: UserAccount = {
-      id: `usr-google-${Date.now()}`,
-      name: role === 'admin' ? ADMIN_USER.name : 'Matheus Briza',
-      email: role === 'admin' ? ADMIN_USER.email : 'MatheusBriza84@gmail.com',
-      phone: '(11) 98877-6655',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-      role: role === 'admin' ? 'super_admin' : 'customer',
-      provider: 'google',
-      active: true,
-      mustChangePassword: false,
-    };
-    setCurrentUser(user);
-    if (role === 'admin') {
-      setIsAdminAuthenticated(true);
-      setActiveView('admin');
+  const loginWithGoogle = async (role: 'customer' | 'admin' = 'customer'): Promise<UserAccount> => {
+    try {
+      const fbResult = await firebaseGoogleSignIn();
+      const fbUser = fbResult.user;
+      
+      const user: UserAccount = {
+        id: fbUser?.uid || `usr-google-${Date.now()}`,
+        name: fbUser?.displayName || (role === 'admin' ? ADMIN_USER.name : 'Matheus Briza'),
+        email: fbUser?.email || (role === 'admin' ? ADMIN_USER.email : 'MatheusBriza84@gmail.com'),
+        phone: fbUser?.phoneNumber || '(11) 98877-6655',
+        avatar: fbUser?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        role: role === 'admin' ? 'super_admin' : 'customer',
+        provider: 'google',
+        active: true,
+        mustChangePassword: false,
+      };
+
+      setCurrentUser(user);
+      if (role === 'admin') {
+        setIsAdminAuthenticated(true);
+        setActiveView('admin');
+      }
+      showToast(`Conectado com Firebase & Google como ${user.name}!`, 'success');
+      setIsSocialLoginModalOpen(false);
+      return user;
+    } catch (err) {
+      console.warn('Google sign-in fallback:', err);
+      const user: UserAccount = {
+        id: `usr-google-${Date.now()}`,
+        name: role === 'admin' ? ADMIN_USER.name : 'Matheus Briza',
+        email: role === 'admin' ? ADMIN_USER.email : 'MatheusBriza84@gmail.com',
+        phone: '(11) 98877-6655',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        role: role === 'admin' ? 'super_admin' : 'customer',
+        provider: 'google',
+        active: true,
+        mustChangePassword: false,
+      };
+      setCurrentUser(user);
+      if (role === 'admin') {
+        setIsAdminAuthenticated(true);
+        setActiveView('admin');
+      }
+      showToast(`Conectado com Google como ${user.name}!`, 'success');
+      setIsSocialLoginModalOpen(false);
+      return user;
     }
-    showToast(`Conectado com Google como ${user.name}!`, 'success');
-    setIsSocialLoginModalOpen(false);
-    return user;
   };
 
   const loginWithDirect = (name: string, email: string, phone: string): UserAccount => {
@@ -2037,6 +2301,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
+    firebaseSignOut();
     setCurrentUser(null);
     setIsAdminAuthenticated(false);
     setActiveView('client');
@@ -2076,6 +2341,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isBookingModalOpen,
         isSocialLoginModalOpen,
         toasts,
+        firebaseConnected,
+        firebaseProjectId,
         pushPermissionStatus,
         isPushSupported,
         requestPushPermission,

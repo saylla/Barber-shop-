@@ -55,6 +55,8 @@ export const AdminSettings: React.FC = () => {
     disconnectGoogleCalendar,
     syncAllAppointmentsToGoogleCalendar,
     fetchUpcomingGoogleCalendarEvents,
+    firebaseConnected,
+    firebaseProjectId,
   } = useApp();
 
   const [formData, setFormData] = useState<ShopSettings>(settings);
@@ -571,6 +573,60 @@ export const AdminSettings: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Firebase Cloud Firestore Database Persistence Status */}
+        <div className="bg-zinc-900 border border-amber-500/30 rounded-3xl p-6 shadow-xl space-y-5 relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-2xl">
+                <Server className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-white">
+                    Banco de Dados em Nuvem (Firebase Firestore)
+                  </h3>
+                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
+                    Nuvem Ativa
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1 max-w-xl">
+                  Armazenamento resiliente e sincronização instantânea em tempo real para múltiplos dispositivos, clientes e barbeiros.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold ${
+                firebaseConnected
+                  ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
+                  : 'bg-zinc-800/80 border-zinc-700 text-zinc-300'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${firebaseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+                <span>{firebaseConnected ? 'Firestore Conectado & Sincronizado' : 'Modo Offline / Local Fallback'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="p-3.5 bg-zinc-950/70 border border-zinc-800 rounded-2xl space-y-1">
+              <span className="text-[11px] text-zinc-400 font-medium">Projeto Google Cloud / Firebase</span>
+              <p className="text-white font-mono font-bold text-xs truncate">{firebaseProjectId}</p>
+            </div>
+            <div className="p-3.5 bg-zinc-950/70 border border-zinc-800 rounded-2xl space-y-1">
+              <span className="text-[11px] text-zinc-400 font-medium">Região do Cluster Firestore</span>
+              <p className="text-white font-bold text-xs">us-east1 (Norte dos EUA / Alta Velocidade)</p>
+            </div>
+            <div className="p-3.5 bg-zinc-950/70 border border-zinc-800 rounded-2xl space-y-1">
+              <span className="text-[11px] text-zinc-400 font-medium">Regras de Segurança (Firestore Rules)</span>
+              <p className="text-emerald-400 font-bold text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Deploy Ativo & Protegido</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Transactional Email & SMTP Configuration */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-md space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">

@@ -1,0 +1,269 @@
+{
+  "entities": {
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Haircut and grooming appointment record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 32 },
+        "customerName": { "type": "string", "maxLength": 128 },
+        "customerPhone": { "type": "string", "maxLength": 32 },
+        "customerEmail": { "type": "string", "maxLength": 128 },
+        "customerAvatar": { "type": "string", "maxLength": 500 },
+        "serviceId": { "type": "string", "maxLength": 128 },
+        "professionalId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "time": { "type": "string", "maxLength": 16 },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "status": { "type": "string", "maxLength": 32 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["code", "customerName", "customerPhone", "serviceId", "professionalId", "date", "time", "price", "status"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer record and history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 128 },
+        "avatar": { "type": "string", "maxLength": 500 },
+        "totalAppointments": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "lastVisit": { "type": "string", "maxLength": 32 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "provider": { "type": "string", "maxLength": 32 },
+        "joinedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["name", "phone"]
+    },
+    "Professional": {
+      "title": "Professional",
+      "description": "Barber profile and work schedule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "specialty": { "type": "string", "maxLength": 200 },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "avatar": { "type": "string", "maxLength": 500 },
+        "bio": { "type": "string", "maxLength": 1000 },
+        "active": { "type": "boolean" },
+        "startTime": { "type": "string", "maxLength": 16 },
+        "endTime": { "type": "string", "maxLength": 16 },
+        "lunchStart": { "type": "string", "maxLength": 16 },
+        "lunchEnd": { "type": "string", "maxLength": 16 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 128 },
+        "pixKey": { "type": "string", "maxLength": 128 },
+        "pixKeyType": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["name", "active", "startTime", "endTime"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Barbershop service offering",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "category": { "type": "string", "maxLength": 64 },
+        "image": { "type": "string", "maxLength": 500 },
+        "active": { "type": "boolean" },
+        "popular": { "type": "boolean" }
+      },
+      "required": ["name", "durationMinutes", "price", "active"]
+    },
+    "MonthlyPackage": {
+      "title": "MonthlyPackage",
+      "description": "VIP subscription package",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "tagline": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "price": { "type": "number" },
+        "servicesIncludedText": { "type": "string", "maxLength": 200 },
+        "image": { "type": "string", "maxLength": 500 },
+        "active": { "type": "boolean" },
+        "popular": { "type": "boolean" },
+        "barberId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["name", "price", "active"]
+    },
+    "BarberProduct": {
+      "title": "BarberProduct",
+      "description": "Grooming retail product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "brand": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "price": { "type": "number" },
+        "promotionalPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "image": { "type": "string", "maxLength": 500 },
+        "active": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "barberId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["name", "price", "stock", "active"]
+    },
+    "ShopSettings": {
+      "title": "ShopSettings",
+      "description": "Barbershop general settings",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "tagline": { "type": "string", "maxLength": 200 },
+        "logo": { "type": "string", "maxLength": 500 },
+        "bannerImage": { "type": "string", "maxLength": 500 },
+        "address": { "type": "string", "maxLength": 300 },
+        "city": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "whatsapp": { "type": "string", "maxLength": 32 },
+        "instagram": { "type": "string", "maxLength": 64 },
+        "mapsUrl": { "type": "string", "maxLength": 500 },
+        "slotIntervalMinutes": { "type": "number" },
+        "autoConfirm": { "type": "boolean" },
+        "minAdvanceBookingHours": { "type": "number" },
+        "sendEmailOnBooking": { "type": "boolean" },
+        "autoOpenWhatsAppOnBooking": { "type": "boolean" },
+        "shopEmail": { "type": "string", "maxLength": 128 },
+        "pushNotificationsEnabled": { "type": "boolean" },
+        "notifyNewBookings": { "type": "boolean" },
+        "notifyStatusChanges": { "type": "boolean" },
+        "playNotificationSound": { "type": "boolean" },
+        "vibrationEnabled": { "type": "boolean" },
+        "pixKey": { "type": "string", "maxLength": 128 },
+        "pixKeyType": { "type": "string", "maxLength": 32 },
+        "pixReceiverName": { "type": "string", "maxLength": 128 },
+        "pixCity": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["name", "phone", "whatsapp"]
+    },
+    "BusinessHours": {
+      "title": "BusinessHours",
+      "description": "Operating hours definition",
+      "type": "object",
+      "properties": {
+        "dayOfWeek": { "type": "number" },
+        "isOpen": { "type": "boolean" },
+        "open": { "type": "string", "maxLength": 16 },
+        "close": { "type": "string", "maxLength": 16 },
+        "lunchStart": { "type": "string", "maxLength": 16 },
+        "lunchEnd": { "type": "string", "maxLength": 16 }
+      },
+      "required": ["isOpen", "open", "close"]
+    },
+    "BlockedTime": {
+      "title": "BlockedTime",
+      "description": "Blocked time slot for a professional",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "professionalId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "startTime": { "type": "string", "maxLength": 16 },
+        "endTime": { "type": "string", "maxLength": 16 },
+        "reason": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["professionalId", "date", "startTime", "endTime"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Administrative and barber account credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "avatar": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "maxLength": 32 },
+        "professionalId": { "type": "string", "maxLength": 128 },
+        "provider": { "type": "string", "maxLength": 32 },
+        "active": { "type": "boolean" },
+        "mustChangePassword": { "type": "boolean" },
+        "password": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "lastLogin": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["name", "email", "role", "active"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Client testimonial and feedback",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "customerName": { "type": "string", "maxLength": 128 },
+        "customerAvatar": { "type": "string", "maxLength": 500 },
+        "rating": { "type": "number" },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "date": { "type": "string", "maxLength": 64 },
+        "serviceName": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["customerName", "rating", "comment"]
+    }
+  },
+  "firestore": {
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Customer haircut appointments and booking records"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Registered and guest customers"
+    },
+    "/professionals/{professionalId}": {
+      "schema": "Professional",
+      "description": "Barber profiles and availability schedules"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Barbershop catalog of services"
+    },
+    "/packages/{packageId}": {
+      "schema": "MonthlyPackage",
+      "description": "VIP monthly subscription packages"
+    },
+    "/products/{productId}": {
+      "schema": "BarberProduct",
+      "description": "Retail grooming products and cosmetics"
+    },
+    "/settings/{settingId}": {
+      "schema": "ShopSettings",
+      "description": "Global barbershop configurations"
+    },
+    "/business_hours/{dayId}": {
+      "schema": "BusinessHours",
+      "description": "Weekly business opening hours"
+    },
+    "/blocked_times/{blockedTimeId}": {
+      "schema": "BlockedTime",
+      "description": "Blocked hours and time-offs for barbers"
+    },
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Admin, manager, and barber system users"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Public customer reviews and ratings"
+    }
+  }
+}

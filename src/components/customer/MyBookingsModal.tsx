@@ -1,7 +1,27 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatDateBR, formatCurrency, generateBookingWhatsAppMessage, generateGoogleCalendarUrl } from '../../utils/calendarUtils';
-import { Calendar, Clock, Scissors, User, X, Search, AlertCircle, Share2, CalendarPlus, XCircle, Mail, RefreshCw, Bell, BellRing, Check } from 'lucide-react';
+import { Appointment } from '../../types';
+import { BookingTicketQrModal } from './BookingTicketQrModal';
+import {
+  Calendar,
+  Clock,
+  Scissors,
+  User,
+  X,
+  Search,
+  AlertCircle,
+  Share2,
+  CalendarPlus,
+  XCircle,
+  Mail,
+  RefreshCw,
+  Bell,
+  BellRing,
+  Check,
+  QrCode,
+  Sparkles,
+} from 'lucide-react';
 
 interface MyBookingsModalProps {
   isOpen: boolean;
@@ -21,8 +41,21 @@ export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClos
     pushPermissionStatus,
     requestPushPermission,
     sendClientHaircutReminder,
+    showToast,
   } = useApp();
   const [searchTerm, setSearchTerm] = useState(currentUser?.phone || currentUser?.email || '');
+  const [selectedApptForTicket, setSelectedApptForTicket] = useState<Appointment | null>(null);
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+
+  const handleOpenTicket = (appt: Appointment) => {
+    setSelectedApptForTicket(appt);
+    setIsTicketModalOpen(true);
+  };
+
+  const handleCloseTicket = () => {
+    setIsTicketModalOpen(false);
+    setSelectedApptForTicket(null);
+  };
 
   if (!isOpen) return null;
 
@@ -192,97 +225,129 @@ export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClos
                   </div>
 
                   {/* Actions */}
-                  {!isCancelled && !isCompleted && (
-                    <div className="pt-3 border-t border-zinc-800 flex flex-wrap gap-2 justify-end">
-                      <button
-                        id={`push-reminder-client-${appt.id}`}
-                        onClick={() => sendClientHaircutReminder(appt.id, '1_hour_before')}
-                        className="py-1.5 px-3 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                        title="Disparar lembrete Push de corte (notificação nativa)"
-                      >
-                        <Bell className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Lembrete Push</span>
-                      </button>
+                  <div className="pt-3 border-t border-zinc-800 flex flex-wrap gap-2 justify-end items-center">
+                    <button
+                      type="button"
+                      id={`qr-ticket-btn-${appt.id}`}
+                      onClick={() => handleOpenTicket(appt)}
+                      className="py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition-colors shadow-md"
+                      title="Ver QR Code do Ingresso Digital para check-in rápido na recepção"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>QR Code / Ingresso</span>
+                    </button>
 
-                      <button
-                        id={`email-voucher-appt-${appt.id}`}
-                        onClick={() => openEmailModal(appt)}
-                        className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                        title="Ver voucher e detalhes do e-mail"
-                      >
-                        <Mail className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Voucher / E-mail</span>
-                      </button>
+                    {!isCancelled && !isCompleted && (
+                      <>
+                        <button
+                          id={`push-reminder-client-${appt.id}`}
+                          onClick={() => sendClientHaircutReminder(appt.id, '1_hour_before')}
+                          className="py-1.5 px-3 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                          title="Disparar lembrete Push de corte (notificação nativa)"
+                        >
+                          <Bell className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Lembrete Push</span>
+                        </button>
 
-                      <button
-                        id={`reschedule-client-appt-${appt.id}`}
-                        onClick={() => openRescheduleModal(appt)}
-                        className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                        title="Trocar data ou horário"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
-                        <span>Reagendar</span>
-                      </button>
+                        <button
+                          id={`email-voucher-appt-${appt.id}`}
+                          onClick={() => openEmailModal(appt)}
+                          className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                          title="Ver voucher e detalhes do e-mail"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Voucher / E-mail</span>
+                        </button>
 
-                      <button
-                        id={`whatsapp-appt-${appt.id}`}
-                        onClick={() => {
-                          const msg = generateBookingWhatsAppMessage({
-                            customerName: appt.customerName,
-                            serviceName: service?.name || '',
-                            professionalName: barber?.name || '',
-                            dateStr: appt.date,
-                            timeStr: appt.time,
-                            price: appt.price,
-                            shopName: settings.name,
-                            code: appt.code,
-                          });
-                          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-                        }}
-                        className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                      >
-                        <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>WhatsApp</span>
-                      </button>
+                        <button
+                          id={`reschedule-client-appt-${appt.id}`}
+                          onClick={() => openRescheduleModal(appt)}
+                          className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                          title="Trocar data ou horário"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Reagendar</span>
+                        </button>
 
-                      <button
-                        id={`gcal-appt-${appt.id}`}
-                        onClick={() => {
-                          const url = generateGoogleCalendarUrl({
-                            title: `${service?.name} — ${settings.name}`,
-                            description: `Agendamento na ${settings.name} com ${barber?.name}. Código: ${appt.code}`,
-                            location: `${settings.address}, ${settings.city}`,
-                            date: appt.date,
-                            time: appt.time,
-                            durationMinutes: appt.durationMinutes,
-                          });
-                          window.open(url, '_blank');
-                        }}
-                        className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                      >
-                        <CalendarPlus className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Agenda</span>
-                      </button>
+                        <button
+                          id={`whatsapp-appt-${appt.id}`}
+                          onClick={() => {
+                            const msg = generateBookingWhatsAppMessage({
+                              customerName: appt.customerName,
+                              serviceName: service?.name || '',
+                              professionalName: barber?.name || '',
+                              dateStr: appt.date,
+                              timeStr: appt.time,
+                              price: appt.price,
+                              shopName: settings.name,
+                              code: appt.code,
+                            });
+                            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                          }}
+                          className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>WhatsApp</span>
+                        </button>
 
-                      <button
-                        id={`cancel-appt-${appt.id}`}
-                        onClick={() => {
-                          if (window.confirm('Deseja realmente cancelar este agendamento?')) {
-                            cancelAppointment(appt.id);
-                          }
-                        }}
-                        className="py-1.5 px-3 rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-300 text-xs font-medium flex items-center gap-1.5 transition-colors"
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                        <span>Cancelar</span>
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          id={`gcal-appt-${appt.id}`}
+                          onClick={() => {
+                            const url = generateGoogleCalendarUrl({
+                              title: `${service?.name} — ${settings.name}`,
+                              description: `Agendamento na ${settings.name} com ${barber?.name}. Código: ${appt.code}`,
+                              location: `${settings.address}, ${settings.city}`,
+                              date: appt.date,
+                              time: appt.time,
+                              durationMinutes: appt.durationMinutes,
+                            });
+                            window.open(url, '_blank');
+                          }}
+                          className="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        >
+                          <CalendarPlus className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Agenda</span>
+                        </button>
+
+                        <button
+                          id={`cancel-appt-${appt.id}`}
+                          onClick={() => {
+                            if (window.confirm('Deseja realmente cancelar este agendamento?')) {
+                              cancelAppointment(appt.id);
+                            }
+                          }}
+                          className="py-1.5 px-3 rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-300 text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Cancelar</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })
           )}
         </div>
+
+        {/* Digital Ticket QR Code Modal */}
+        <BookingTicketQrModal
+          isOpen={isTicketModalOpen}
+          onClose={handleCloseTicket}
+          appointment={selectedApptForTicket}
+          service={
+            selectedApptForTicket
+              ? services.find((s) => s.id === selectedApptForTicket.serviceId) || null
+              : null
+          }
+          professional={
+            selectedApptForTicket
+              ? professionals.find((p) => p.id === selectedApptForTicket.professionalId) || null
+              : null
+          }
+          settings={settings}
+          showToast={showToast}
+        />
       </div>
     </div>
   );
